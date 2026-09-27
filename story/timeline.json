@@ -1,0 +1,43 @@
+{
+ "title": "ほしのおとしもの",
+ "fps": 24,
+ "width": 1920,
+ "height": 1080,
+ "duration": 60.0,
+ "scenes": [
+  {"id": "s01", "start": 0.0,  "end": 7.0,  "name": "Opening — starry town, a falling star, title"},
+  {"id": "s02", "start": 7.0,  "end": 13.0, "name": "Haru at her attic window sees the star land"},
+  {"id": "s03", "start": 13.0, "end": 25.0, "name": "Meeting Kira in the garden"},
+  {"id": "s04", "start": 25.0, "end": 37.0, "name": "Journey up the shrine steps, Kira fading"},
+  {"id": "s05", "start": 37.0, "end": 48.0, "name": "Summit — the paper lantern idea"},
+  {"id": "s06", "start": 48.0, "end": 55.0, "name": "Ascension — lantern rises, Kira becomes a star"},
+  {"id": "s07", "start": 55.0, "end": 60.0, "name": "Dawn — goodbye, end card"}
+ ],
+ "lines": [
+  {"id": "l01_haru", "start": 8.6},
+  {"id": "l02_kira", "start": 13.8},
+  {"id": "l03_haru", "start": 16.5},
+  {"id": "l04_kira", "start": 19.1},
+  {"id": "l05_haru", "start": 25.3},
+  {"id": "l06_kira", "start": 31.1},
+  {"id": "l07_haru", "start": 35.6},
+  {"id": "l08_haru", "start": 38.6},
+  {"id": "l09_kira", "start": 42.6},
+  {"id": "l10_haru", "start": 46.3},
+  {"id": "l11_kira", "start": 49.4},
+  {"id": "l12_haru", "start": 56.0}
+ ],
+ "sfx": [
+  {"t": 2.2,  "name": "shooting_star_whoosh"},
+  {"t": 7.6,  "name": "star_pass_shimmer"},
+  {"t": 8.0,  "name": "soft_impact_pon"},
+  {"t": 9.9,  "name": "haru_jumps_up"},
+  {"t": 13.0, "name": "crickets_bed_start"},
+  {"t": 25.0, "name": "footsteps_running_start"},
+  {"t": 37.0, "name": "footsteps_running_stop"},
+  {"t": 40.2, "name": "lantern_ignite_whoomp"},
+  {"t": 48.0, "name": "lantern_rise_chimes"},
+  {"t": 52.8, "name": "star_burst_sparkle"},
+  {"t": 55.0, "name": "dawn_birds"}
+ ]
+}

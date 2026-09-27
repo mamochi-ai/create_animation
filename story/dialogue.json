@@ -1,0 +1,14 @@
+[
+ {"id": "l01_haru", "who": "haru", "style": "neutral", "text": "……いまの、なに？", "sub": "……いまの、なに？"},
+ {"id": "l02_kira", "who": "kira", "style": "sad", "text": "いたたた……おっこちちゃった。", "sub": "いたたた……落っこちちゃった。"},
+ {"id": "l03_haru", "who": "haru", "style": "happy", "text": "わっ！ほしが、しゃべった！", "sub": "わっ！ 星が、しゃべった！"},
+ {"id": "l04_kira", "who": "kira", "style": "sad", "text": "ぼく、キラ。よあけまでに、そらへかえらないと、きえちゃうんだ。", "sub": "ぼく、キラ。夜明けまでに空へ帰らないと、消えちゃうんだ。"},
+ {"id": "l05_haru", "who": "haru", "style": "happy", "text": "じゃあ、いちばんたかいところまで、いっしょにいこう！", "sub": "じゃあ、いちばん高いところまで、いっしょに行こう！"},
+ {"id": "l06_kira", "who": "kira", "style": "sad", "text": "ハル……ぼく、ひかりが、よわくなってきた。", "sub": "ハル……ぼく、光が、弱くなってきた。", "speed": 0.95},
+ {"id": "l07_haru", "who": "haru", "style": "angry", "text": "もうすこし！", "sub": "もう少し！"},
+ {"id": "l08_haru", "who": "haru", "style": "neutral", "text": "そうだ……！", "sub": "そうだ……！"},
+ {"id": "l09_kira", "who": "kira", "style": "happy", "text": "あったかい……ハルのちょうちん、あったかいよ。", "sub": "あったかい……ハルのちょうちん、あったかいよ。", "speed": 0.95},
+ {"id": "l10_haru", "who": "haru", "style": "happy", "text": "いって、キラ！", "sub": "行って、キラ！"},
+ {"id": "l11_kira", "who": "kira", "style": "happy", "text": "ありがとう、ハル！ずっと、みてるからね！", "sub": "ありがとう、ハル！ ずっと、見てるからね！"},
+ {"id": "l12_haru", "who": "haru", "style": "neutral", "text": "……またね、キラ。", "sub": "……またね、キラ。", "speed": 0.9}
+]
