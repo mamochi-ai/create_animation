@@ -326,6 +326,8 @@ def shot_a(t, tg):
     cx = lerp(830, 860, ease_in_out(t / CUT))
     cy = lerp(715, 770, ease_in_out(t / CUT))
     hx_, hy_ = _handheld(tg, 4)
+    # camera tilts up a touch to follow Haru's jump back
+    cy -= 55 * smoothstep(2.85, 3.2, t) * (1 - smoothstep(3.7, 4.6, t))
     # little camera jolt when Haru jumps back
     if 3.1 < t < 3.8:
         hy_ += 6 * math.sin((t - 3.1) * 30) * math.exp(-6 * (t - 3.1))
