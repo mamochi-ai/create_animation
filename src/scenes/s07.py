@@ -56,7 +56,7 @@ def camera(t):
     cx, cy, z = 1212 + 10 * push, 408 - 4 * push, 1.66 + 0.05 * push
     pb = ease_in_out(smoothstep(3.0, 4.35, t) * 0.5 + invl(2.9, 4.3, t) * 0.5)
     cx = lerp(cx, 1150, pb)
-    cy = lerp(cy, 300, pb)
+    cy = lerp(cy, 340, pb)
     z = lerp(z, 1.36, pb)
     calm = 1.0 - 0.7 * smoothstep(3.6, 4.4, t)   # handheld settles for the hold
     return cx + hx * calm, cy + hy * calm, z
@@ -138,10 +138,88 @@ def _warm_grade(img, t):
 
 def _sun(ctx, cam):
     hs = world.hilltop_horizon_screen(cam)
-    y = hs - 75
-    draw_light_pool(ctx, SUN_X, y, 900, 380, color="#FFB070", strength=0.40)
-    draw_light_pool(ctx, SUN_X, y, 380, 200, color="#FFD9A0", strength=0.55)
-    draw_light_pool(ctx, SUN_X, y + 8, 90, 70, color="#FFF4DC", strength=0.9)
+    y = hs - 35
+    draw_light_pool(ctx, SUN_X, y, 760, 170, color="#FFB070", strength=0.38)
+    draw_light_pool(ctx, SUN_X, y, 300, 90, color="#FFD9A0", strength=0.5)
+    draw_light_pool(ctx, SUN_X, y + 6, 70, 34, color="#FFF4DC", strength=0.75)
+
+
+def _sky_deepen(ctx, cam, star):
+    """Push the upper sky (and the sky around the star) toward blue so the star has contrast."""
+    hs = world.hilltop_horizon_screen(cam)
+    ctx.rectangle(0, 0, core.W, hs)
+    ctx.set_source(core.linear_gradient(0, 0, 0, hs * 0.75, [(0, "#3F63AE", 0.42), (0.55, "#5A7CC0", 0.16),
+                                                               (1, "#6F8CC8", 0.0)]))
+    ctx.fill()
+    sx, sy = star
+    ctx.set_source(core.radial_gradient(sx, sy, 0, 420, [(0, "#3C5EA8", 0.30), (0.5, "#4A6BB2", 0.14),
+                                                        (1, "#4A6BB2", 0.0)]))
+    ctx.arc(sx, sy, 420, 0, TAU)
+    ctx.fill()
+
+
+MIST = (1.0, 0.87, 0.74)
+
+
+def _valley_mist(ctx, cam):
+    """Warm morning haze over the valley-town band, strongest at the horizon."""
+    hs = world.hilltop_horizon_screen(cam)
+    y0, y1 = hs - 60, hs + 520
+    ctx.rectangle(0, y0, core.W, y1 - y0)
+    ctx.set_source(core.linear_gradient(0, y0, 0, y1, [(0, MIST, 0.0), (0.1, MIST, 0.62), (0.3, MIST, 0.46),
+                                                       (0.6, MIST, 0.24), (1, MIST, 0.08)]))
+    ctx.fill()
+    # a couple of drifting brighter mist banks
+    for k, (yy, a) in enumerate(((hs + 40, 0.22), (hs + 150, 0.16))):
+        ctx.save()
+        ctx.translate(960, yy)
+        ctx.scale(1.0, 0.09)
+        ctx.set_source(core.radial_gradient(0, 0, 0, 1100, [(0, (1.0, 0.92, 0.82), a), (1, (1.0, 0.92, 0.82), 0)]))
+        ctx.arc(0, 0, 1100, 0, TAU)
+        ctx.fill()
+        ctx.restore()
+
+
+def _crest(x):
+    """World-space crest of the near hilltop edge used in the closer shot (drops away to the right)."""
+    return 655 + 0.00011 * (x - 950) ** 2 + 120 * smoothstep(1350, 2300, x) + 6 * noise1(x / 70, 9)
+
+
+def _near_ground(ctx, t, tg, ph, cam):
+    """Foreground hill edge + swaying grass in front of Haru's legs (closer shot)."""
+    cx, cy, z = cam
+    ctx.save()
+    _cam_apply(ctx, cam)
+    x0, x1 = cx - 960 / z - 60, cx + 960 / z + 60
+    bottom = cy + 540 / z + 60
+    C = world.sky_colors(ph)
+    xs = np.linspace(x0, x1, 120)
+    ctx.new_path()
+    ctx.move_to(x0, bottom)
+    for x in xs:
+        ctx.line_to(x, _crest(x))
+    ctx.line_to(x1, bottom)
+    ctx.close_path()
+    g = core.mix(C["grass"], C["ground"], 0.3)
+    ctx.set_source(core.linear_gradient(0, 640, 0, bottom, [(0, core.mix(g, (0.55, 0.5, 0.25), 0.25)),
+                                                             (0.35, g), (1, core.mix(g, (0, 0, 0), 0.5))]))
+    ctx.fill_preserve()
+    # warm sunrise wash from the right on the slope
+    ctx.set_source(core.linear_gradient(x0, 0, x1, 0, [(0, (1.0, 0.75, 0.4), 0.0), (1, (1.0, 0.75, 0.4), 0.28)]))
+    ctx.fill()
+    # gold rim along the crest
+    ctx.new_path()
+    for x in xs:
+        ctx.line_to(x, _crest(x) + 1.5)
+    ctx.set_line_width(5 / z)
+    ctx.set_source_rgba(1.0, 0.82, 0.48, 0.85)
+    ctx.stroke()
+    light = (cx + 900 / z, 560, 1500, "#FFC878", 0.85)
+    world.draw_grass(ctx, tg, lambda x: _crest(x) + 6, "bg", (x0, x1), ph, seed=71, density=1.4,
+                     height=0.9, wind=1.2, light=light)
+    world.draw_grass(ctx, tg, lambda x: _crest(x) + 110, "fg", (x0, x1), ph, seed=72, density=0.8,
+                     height=0.5, wind=1.2, light=light)
+    ctx.restore()
 
 
 def _haru_pose(t, tg):
@@ -243,18 +321,22 @@ def _vignette(img, strength=0.32, color=(0.16, 0.08, 0.10)):
 
 # ------------------------------------------------------------------ render
 _TEXT = None
-TEXT_BOX = (1250, 200, 1840, 430)
+TEXT_BOX = (1300, 100, 1880, 330)
 
 
 def _text():
-    """Cached end-card layer + its amber halo (static)."""
+    """Cached end-card layer + its soft brown shadow (static)."""
     global _TEXT
     if _TEXT is None:
-        tx = core.text_layer("おわり", (1540, 310), size=96, font="klee", color="#FFF6E0", spacing=12,
+        tx = core.text_layer("おわり", (1590, 205), size=110, font="klee", color="#FFF6E0", spacing=14,
                              stroke=2, stroke_color="#FFF6E0")
-        halo = core.blur(tx[..., 3:4], 16)[..., 0]
-        halo = np.clip(halo * 2.0, 0, 1) * 0.62
-        _TEXT = (tx, halo)
+        a = tx[..., 3]
+        sh = np.zeros_like(a)
+        sh[5:, 3:] = a[:-5, :-3]                      # offset down-right
+        sh = core.blur(sh[..., None], 5)[..., 0]
+        sh = np.clip(sh * 1.4, 0, 1) * 0.6
+        halo = np.clip(core.blur(a[..., None], 18)[..., 0] * 1.6, 0, 1) * 0.3
+        _TEXT = (tx, sh, halo)
     return _TEXT
 
 
@@ -265,10 +347,14 @@ def render(t: float) -> np.ndarray:
     cam = camera(t)
 
     # ---------------- background world
+    sx, sy = star_pos(t, cam)
     s, ctx = core.new_surface()
-    draw_hilltop(ctx, ph, tg, cam=cam, stars=False, sun_x=SUN_X, wind=1.0, props=t < CUT)
-    _birds(ctx, t, cam)
+    draw_hilltop(ctx, ph, tg, cam=cam, stars=False, sun_x=SUN_X, wind=1.0, tree=False, ground=False, props=False)
+    _sky_deepen(ctx, cam, (sx, sy))
     _sun(ctx, cam)
+    _valley_mist(ctx, cam)
+    _birds(ctx, t, cam)
+    draw_hilltop(ctx, ph, tg, cam=cam, sky=False, far=False, wind=1.0, props=t < CUT)
     img = core.surface_rgba(s)
 
     # gold rim on the camphor canopy (edges facing the low sun on the right)
@@ -290,8 +376,11 @@ def render(t: float) -> np.ndarray:
     pose = _haru_pose(t, tg)
     draw_haru(c2, HARU_X, gy, HARU_S, t=tg, **pose)
     c2.restore()
-    # foreground grass on the same layer
-    draw_hilltop_fg(c2, ph, tg, cam=cam, wind=1.0)
+    # foreground grass / near hill edge on the same layer
+    if t < CUT:
+        draw_hilltop_fg(c2, ph, tg, cam=cam, wind=1.0)
+    else:
+        _near_ground(c2, t, tg, ph, cam)
     core.over(img, core.surface_rgba(s2))
 
     # ---------------- light motes / petals of light
@@ -301,30 +390,37 @@ def render(t: float) -> np.ndarray:
     _screen_glow(img, ml[..., :3], 8, 0.7, ds=4)
 
     # ---------------- the last star: Kira
-    sx, sy = star_pos(t, cam)
     p = star_pulse(t)
     breathe = 0.5 + 0.5 * math.sin(tg * 2.3)
-    size = 40 + 7 * breathe + 80 * p
-    sl = core.draw_layer(lambda c: (
-        draw_light_pool(c, sx, sy, 90 + 40 * p, None, "#FFE9A8", 0.35 + 0.25 * p),
-        draw_glint(c, sx, sy, size, clamp(0.9 + 0.1 * p), "#FFF1C8", rot=0.08 * math.sin(tg * 0.7) + 0.35 * p),
-        draw_glint(c, sx, sy, size * 0.45, 0.6 * clamp(p), "#FFFFFF", rot=math.pi / 4 + 0.2 * p, glow=False),
-    ))
-    r = max(size, 130 + 40 * p) + 10
+    size = 46 + 6 * breathe + 70 * p
+    rot = 0.05 * math.sin(tg * 0.7) + 0.25 * p
+    STAR = "#DDE9FF"
+
+    def _star(c):
+        draw_light_pool(c, sx, sy, 46 + 20 * p, None, "#CFE0FF", 0.28 + 0.2 * p)
+        draw_glint(c, sx, sy, size, 1.0, STAR, rot=rot, glow=False, diag=0.0)          # sharp 4-point cross
+        draw_glint(c, sx, sy, size * 0.42, 0.8, "#FFFFFF", rot=rot + math.pi / 4, glow=False, diag=0.0)  # thin diagonals
+        c.set_source(core.radial_gradient(sx, sy, 0, 7 + 2 * p, [(0, "#FFFFFF", 1.0), (0.55, "#F2F7FF", 1.0),
+                                                                 (1, STAR, 0.0)]))
+        c.arc(sx, sy, 7 + 2 * p, 0, TAU)
+        c.fill()
+    sl = core.draw_layer(_star)
+    r = size + 40
     sbox = (sx - r, sy - r, sx + r, sy + r)
     _over_box(img, sl, sbox)
-    _screen_glow(img, sl[..., :3], 22, 1.0 + 0.8 * p, tint=(1.0, 0.92, 0.72), box=sbox)
+    _screen_glow(img, sl[..., :3], 7, 0.55 + 0.5 * p, tint=(0.85, 0.92, 1.0), box=sbox)
 
     # ---------------- end card
     a = ease_in_out(invl(3.0, 4.6, t))
     if a > 0.002:
-        tx, halo = _text()
+        tx, sh, halo = _text()
         x0, y0, x1, y1 = TEXT_BOX
-        hsub = halo[y0:y1, x0:x1, None] * a
-        amber = np.array([0.86, 0.52, 0.28], np.float32)
         sub = img[y0:y1, x0:x1, :3]
-        sub[...] = sub * (1 - hsub) + amber * hsub
-        _screen_glow(img, tx[..., :3] * a, 5, 0.5 * a, tint=(1.0, 0.85, 0.55), box=TEXT_BOX)
+        hs_ = halo[y0:y1, x0:x1, None] * a
+        sub[...] = sub * (1 - hs_) + np.array([0.80, 0.55, 0.36], np.float32) * hs_   # warm amber aura
+        ss_ = sh[y0:y1, x0:x1, None] * a
+        sub[...] = sub * (1 - ss_) + np.array([0.36, 0.20, 0.13], np.float32) * ss_   # soft brown shadow
+        _screen_glow(img, tx[..., :3] * a, 4, 0.35 * a, tint=(1.0, 0.85, 0.55), box=TEXT_BOX)
         _over_box(img, tx, TEXT_BOX, a)
 
     # ---------------- post
