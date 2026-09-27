@@ -457,8 +457,8 @@ def render_wide(t):
             a = math.exp(-max(0.0, dt) * 3.2) * smoothstep(-0.05, 0.03, dt)
             flash_s, flc = core.new_surface()
             flc.set_source(core.radial_gradient(center[0], center[1], 0, 1500,
-                                               [(0, "#FFF4D6", 0.8 * a), (0.06, "#FFE0A0", 0.45 * a), (0.3, "#FFC37A", 0.16 * a),
-                                                (1, "#FFA868", 0.05 * a)]))
+                                               [(0, "#FFF4D6", 0.85 * a), (0.06, "#FFE0A0", 0.55 * a), (0.3, "#FFC37A", 0.28 * a),
+                                                (1, "#FFA868", 0.16 * a)]))
             flc.paint()
             flash = core.surface_rgba(flash_s)
             img[..., :3] = 1 - (1 - img[..., :3]) * (1 - flash[..., :3])
