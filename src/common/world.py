@@ -1623,7 +1623,7 @@ def _town_cols(layer, C, oy):
                     r=mix(base, C["leaf_mid"], 0.45), g=mix(base, rim, 0.38), b=_darken(base, 0.35), rim=(rim, 0.85))
     if layer == "mid":
         base = C["mids"]
-        return dict(a=linear_gradient(0, 700 + oy, 0, 960 + oy, [(0, base), (0.55, base), (1, mix(base, fog, 0.3 + 0.3 * mist))]),
+        return dict(a=linear_gradient(0, 700 + oy, 0, 960 + oy, [(0, base), (0.55, base), (1, mix(base, fog, 0.18 + 0.15 * mist))]),
                     r=C["roof"], g=mix(C["roof"], rim, 0.4), b=_darken(base, 0.45), rim=(rim, 0.75))
     base = C["near"]
     return dict(a=base, r=C["roof_near"], g=mix(C["roof_near"], rim, 0.33), b=_darken(base, 0.5), rim=(rim, 0.5))
@@ -1737,3 +1737,1210 @@ def draw_town(ctx, layer, phase, t=0.0, cam_x=0.0, cam_y=0.0, seed=11, lights=Tr
             ctx.close_path()
             ctx.fill()
     _draw_windows(ctx, T["wins"], C, t, ox, oy, big=layer in ("mid", "near", "hill"))
+
+
+# =========================================================================== phase-cached full-colour sprites
+_PHASE_STEP = 0.1
+_SPRITES = {}
+
+
+def _phased(key, builder, phase, maxkeep=24):
+    """Crossfade between full-colour sprites baked at phase buckets of 0.1.
+    builder(phase) -> (ARGB surface, x0, y0). Returns [(surf, x0, y0, alpha)]."""
+    q = clamp(phase) / _PHASE_STEP
+    i0 = int(math.floor(q + 1e-6))
+    f = q - i0
+    out = []
+    for i, a in ((i0, 1.0), (i0 + 1, f)):
+        if a < 0.02 or i * _PHASE_STEP > 1.0001:
+            continue
+        k = (key, i)
+        if k not in _SPRITES:
+            if len(_SPRITES) > maxkeep:
+                _SPRITES.pop(next(iter(_SPRITES)))
+            _SPRITES[k] = builder(i * _PHASE_STEP)
+        s, x0, y0 = _SPRITES[k]
+        out.append((s, x0, y0, a))
+    return out
+
+
+def _paint_phased(ctx, key, builder, phase, ox=0.0, oy=0.0):
+    for s, x0, y0, a in _phased(key, builder, phase):
+        ctx.set_source_surface(s, round(x0 + ox), round(y0 + oy))
+        xx, yx, xy, yy, _, _ = ctx.get_matrix()
+        if abs(xx - 1) > 1e-3 or abs(yy - 1) > 1e-3:
+            ctx.get_source().set_filter(cairo.FILTER_BILINEAR)
+        ctx.paint_with_alpha(a)
+
+
+def _coded_to_argb(L, cols):
+    s = cairo.ImageSurface(cairo.FORMAT_ARGB32, L.w, L.h)
+    c = cairo.Context(s)
+    L.paint(c, cols, -L.x0, -L.y0)
+    s.flush()
+    return s, L.x0, L.y0
+
+
+# =========================================================================== grass
+@lru_cache(maxsize=64)
+def _blades(seed, layer, x0, x1, density, height):
+    rng = np.random.default_rng(seed)
+    fg = layer == "fg"
+    n = int((x1 - x0) / 1920 * (150 if fg else 460) * density)
+    x = rng.uniform(x0, x1, n)
+    h = (rng.uniform(150, 330, n) if fg else rng.uniform(40, 115, n)) * height
+    w = rng.uniform(10, 18, n) if fg else rng.uniform(3.5, 6.5, n)
+    yo = rng.uniform(0, 34 if fg else 18, n)
+    lean = rng.normal(0, 0.2, n)
+    sh = rng.random(n)
+    ph = rng.uniform(0, TAU, n)
+    o = np.argsort(yo)
+    return x[o], h[o], w[o], yo[o], lean[o], sh[o], ph[o]
+
+
+def draw_grass(ctx, t, y_base, layer="fg", x_range=(-40, W + 40), phase=0.0, seed=4, density=1.0,
+               height=1.0, wind=1.0, light=None):
+    """Swaying grass blades rooted along y_base (a number, or a function x->y).
+
+    layer 'bg': short thin blades (≈460 per 1920 px), 'fg': tall dark wide
+    blades (≈150 per 1920 px) for in front of characters.  wind scales the
+    sway; gusts roll across left→right.  light=(x, y, radius, colour,
+    strength) warms blades near a light source (Kira / a window).
+    """
+    C = sky_colors(phase)
+    X, Hh, Wd, Yo, Ln, Sh, Ph = _blades(seed, layer, int(x_range[0]), int(x_range[1]), float(density), float(height))
+    fg = layer == "fg"
+    base_c = _darken(C["grass"], 0.55 if fg else 0.1)
+    tip_c = mix(C["grass"], C["grass_tip"], 0.45 if fg else 1.0)
+    ctx.save()
+    for i in range(len(X)):
+        x = X[i]
+        y = (y_base(x) if callable(y_base) else y_base) + Yo[i] * (1 if fg else 0.6)
+        h = Hh[i]
+        sw = wind * (0.09 * math.sin(1.3 * t + x * 0.004 + Ph[i]) + 0.05 * math.sin(2.9 * t + x * 0.013 + Ph[i] * 2)
+                     + 0.16 * max(0.0, math.sin(0.55 * t - x * 0.0022)) ** 3)
+        a = Ln[i] + sw
+        tx, ty = x + math.sin(a) * h, y - math.cos(a) * h * 0.96
+        cx, cy = x + math.sin(a * 0.35) * h * 0.45, y - h * 0.55
+        w = Wd[i]
+        k = Sh[i]
+        b = mix(base_c, _darken(base_c, 0.3), k)
+        tc = mix(tip_c, _darken(tip_c, 0.35), k)
+        if light is not None:
+            lx, ly, lr, lc, ls = light
+            f = ls * clamp(1 - math.hypot(tx - lx, ty - ly) / lr) ** 1.5
+            if f > 0:
+                tc = mix(tc, _c(lc), clamp(f))
+                b = mix(b, _c(lc), clamp(f * 0.4))
+        ctx.move_to(x - w / 2, y)
+        ctx.curve_to(cx - w * 0.3, cy, tx, ty + h * 0.2, tx, ty)
+        ctx.curve_to(tx, ty + h * 0.2, cx + w * 0.3, cy, x + w / 2, y)
+        ctx.close_path()
+        ctx.set_source(linear_gradient(x, y, tx, ty, [(0, b), (1, tc)]))
+        ctx.fill()
+    ctx.restore()
+
+
+# =========================================================================== garden (s03)
+GARDEN_GROUND_Y = 650.0        # base of the fence / start of the lawn
+GARDEN_IMPACT = (1000.0, 820.0)  # suggested spot for Kira's crater
+GARDEN_WINDOW = (70.0, 330.0, 230.0, 220.0)  # lit shoji window on the house wall (x, y, w, h)
+
+
+@lru_cache(maxsize=2)
+def _garden_parts(seed=2):
+    rng = np.random.default_rng(seed)
+    # neighbour roofs / big tree / pole behind the fence
+    B = _Coded(W + 200, 520, -100, 200)
+    wins = []
+    for x, b, w, hw, kind in ((300, 560, 360, 70, "hip2"), (820, 540, 300, 50, "hip"), (1180, 575, 420, 80, "hip2"),
+                              (1650, 560, 330, 60, "gable")):
+        _house(B, x, b, w, hw, rng, 2.6, wins, kind=kind, tiles=True, p_lit=0.45, style=1, ext=150)
+    for x, y, r in ((1080, 470, 90), (1000, 420, 70), (1130, 400, 75), (1560, 500, 60)):
+        _bush(B, x, y + r, r, rng, 3)
+    pole = _pole(B, 1480, 700, 230, 2.4)
+    _wires(B, [(-100, y + 60) for _, y in pole], pole, 40, 1.3)
+    _wires(B, pole, [(W + 100, y + 30) for _, y in pole], 30, 1.3)
+    B.bake(rim=(2, 3, 0.7))
+    # fence (vertical cedar boards + cap) and hedge
+    F = _Coded(W + 200, 260, -100, 440)
+    ctx = F.ctx
+    top, bot = 478, GARDEN_GROUND_Y + 8
+    ctx.rectangle(-100, top, W + 200, bot - top)
+    F.fill(1, 0, 0)
+    x = -100
+    while x < W + 100:
+        bw = rng.uniform(26, 34)
+        ctx.rectangle(x, top + 6, 1.6, bot - top)
+        F.fill(0, 0, 1)
+        ctx.rectangle(x + 1.6, top + 6, 2.2, bot - top)
+        F.fill(0, 0.5, 0)
+        x += bw
+    for x in range(-60, W + 100, 240):
+        ctx.rectangle(x, top - 6, 16, bot - top + 6)
+        F.fill(0.6, 0.3, 0)
+    ctx.rectangle(-100, top - 8, W + 200, 10)
+    F.fill(0.8, 0.8, 0)
+    ctx.rectangle(-100, top + 2, W + 200, 5)
+    F.fill(0, 0, 1)
+    ctx.rectangle(-100, top + 90, W + 200, 5)
+    F.fill(0, 0.4, 0)
+    F.bake(rim=(1, 2, 0.5))
+    Hd = _Coded(W + 200, 300, -100, 380)
+    for x in np.arange(380, W + 120, 55):
+        if rng.random() < 0.25:
+            continue
+        r = rng.uniform(40, 70)
+        subs = [(0.0, 0.0, r * 0.72)] + [(math.cos(a) * r * 0.6, math.sin(a) * r * 0.45, r * rng.uniform(0.3, 0.42))
+                                         for a in np.linspace(0, TAU, 9, endpoint=False) + rng.uniform(0, 1)]
+        _draw_clump(Hd, x + rng.uniform(-10, 10), 500 + rng.uniform(-25, 25), r, subs, 1.0)
+    Hd.bake(rim=(2, 3, 0.7))
+    # house wall (left)
+    Ho = _Coded(420, 1080, -40, 0)
+    ctx = Ho.ctx
+    ctx.rectangle(-40, 0, 400, 1080)
+    Ho.fill()
+    for y in range(90, 760, 22):
+        ctx.rectangle(-40, y, 400, 3)
+        Ho.fill(0, 0, 0.8)
+        ctx.rectangle(-40, y + 3, 400, 1.5)
+        Ho.fill(0, 0.3, 0)
+    wx, wy, ww, wh = GARDEN_WINDOW
+    ctx.rectangle(wx - 14, wy - 14, ww + 28, wh + 28)
+    Ho.fill(1, 0, 0)
+    ctx.rectangle(wx - 24, wy + wh + 10, ww + 48, 12)
+    Ho.fill(1, 0.5, 0)
+    ctx.rectangle(355, 0, 18, 800)
+    Ho.fill(1, 0.2, 0)
+    ctx.rectangle(-40, 0, 460, 70)
+    Ho.fill(0, 0, 1)
+    for x in range(-30, 420, 38):
+        ctx.rectangle(x, 60, 14, 22)
+        Ho.fill(0, 0.2, 1)
+    ctx.rectangle(-40, 720, 420, 400)
+    Ho.fill(1, 0.1, 0.5)
+    ctx.rectangle(-40, 720, 420, 5)
+    Ho.fill(0, 0.5, 0)
+    Ho.bake(rim=None)
+    # ground: lawn with lighter patches + stepping stones
+    G = _Coded(W + 200, 450, -100, GARDEN_GROUND_Y)
+    ctx = G.ctx
+    ctx.rectangle(-100, GARDEN_GROUND_Y, W + 200, 450)
+    G.fill()
+    for i in range(160):
+        x, y = rng.uniform(-100, W + 100), rng.uniform(GARDEN_GROUND_Y + 10, 1100)
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.scale(1, 0.28)
+        ctx.arc(0, 0, rng.uniform(20, 90), 0, TAU)
+        ctx.restore()
+        G.fill(rng.uniform(0.2, 0.6), 0, 0)
+    for (x, y, r) in ((560, 760, 44), (760, 830, 52), (1340, 880, 58), (1560, 790, 46), (420, 900, 60)):
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.scale(1, 0.38)
+        ctx.arc(0, 8, r, 0, TAU)
+        ctx.restore()
+        G.fill(0, 0, 1)
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.scale(1, 0.34)
+        ctx.arc(0, 0, r * 0.96, 0, TAU)
+        ctx.restore()
+        G.fill(0, 1, 0)
+    G.bake(rim=None)
+    return dict(back=B, back_wins=wins, fence=F, hedge=Hd, house=Ho, ground=G)
+
+
+def _hydrangea_builder(seed):
+    def build(phase):
+        C = sky_colors(phase)
+        rng = np.random.default_rng(seed)
+        w, h = 420, 330
+        s = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
+        ctx = cairo.Context(s)
+        ctx.translate(w / 2, h - 20)
+        night = 1 - C["sun"]
+        leaf = mix(rgb("#1F4A3A"), C["leaf"], 0.55 * night + 0.1)
+        leaf_l = mix(leaf, C["leaf_lit"], 0.35)
+        # leaves
+        for i in range(34):
+            a = rng.uniform(-2.7, -0.45)
+            d = rng.uniform(30, 150)
+            x, y = math.cos(a) * d * 1.25, math.sin(a) * d * 0.8
+            ctx.save()
+            ctx.translate(x, y)
+            ctx.rotate(a + math.pi / 2 + rng.uniform(-0.5, 0.5))
+            L = rng.uniform(30, 46)
+            ctx.move_to(0, 0)
+            ctx.curve_to(L * 0.5, -L * 0.3, L * 0.45, -L * 0.9, 0, -L * 1.4)
+            ctx.curve_to(-L * 0.45, -L * 0.9, -L * 0.5, -L * 0.3, 0, 0)
+            k = rng.random()
+            ctx.set_source_rgb(*mix(leaf, leaf_l, k * 0.6))
+            ctx.fill()
+            ctx.move_to(0, 0)
+            ctx.line_to(0, -L * 1.3)
+            ctx.set_source_rgba(*leaf_l, 0.5)
+            ctx.set_line_width(1.2)
+            ctx.stroke()
+            ctx.restore()
+        hues = [rgb("#5E7FE6"), rgb("#8B6FE0"), rgb("#7CA3F2"), rgb("#B07CD8"), rgb("#6A6AD8")]
+        heads = [(-95, -150, 52), (10, -190, 60), (110, -140, 50), (-30, -110, 46), (70, -95, 42)]
+        for hx, hy, hr in heads:
+            base = hues[int(rng.integers(len(hues)))]
+            other = hues[int(rng.integers(len(hues)))]
+            base = mix(base, C["mid"], 0.35 * night)
+            other = mix(other, C["mid"], 0.35 * night)
+            ctx.set_source_rgba(*_darken(base, 0.55), 1)
+            ctx.arc(hx, hy, hr, 0, TAU)
+            ctx.fill()
+            pts = []
+            for i in range(95):
+                a = rng.uniform(0, TAU)
+                d = math.sqrt(rng.random()) * hr * 0.95
+                pts.append((hx + math.cos(a) * d, hy + math.sin(a) * d * 0.92))
+            pts.sort(key=lambda p: p[1])
+            for (x, y) in pts:
+                lit = clamp(1 - ((x - hx + hr * 0.4) ** 2 + (y - hy + hr * 0.5) ** 2) ** 0.5 / (hr * 1.6))
+                col = mix(base, other, rng.random() * 0.6)
+                col = mix(_darken(col, 0.35), _lighten(col, 0.35), lit)
+                col = mix(col, C["rim"], 0.15 * lit)
+                pr = rng.uniform(4.5, 7.5)
+                rot = rng.uniform(0, TAU)
+                ctx.save()
+                ctx.translate(x, y)
+                ctx.rotate(rot)
+                for k in range(4):
+                    ctx.save()
+                    ctx.rotate(k * math.pi / 2)
+                    ctx.scale(1, 0.7)
+                    ctx.arc(pr * 0.75, 0, pr * 0.62, 0, TAU)
+                    ctx.restore()
+                ctx.set_source_rgb(*col)
+                ctx.fill()
+                ctx.arc(0, 0, pr * 0.2, 0, TAU)
+                ctx.set_source_rgba(*_lighten(col, 0.6), 0.9)
+                ctx.fill()
+                ctx.restore()
+        s.flush()
+        return s, -w / 2, -(h - 20)
+    return build
+
+
+HYDRANGEAS = ((560, 715, 0.95, 1), (830, 700, 0.8, 2), (1420, 712, 1.0, 3), (1720, 725, 0.9, 1))
+
+
+def draw_garden(ctx, t, phase=0.0, cam_x=0.0, cam_y=0.0, sky=True, window=1.0, light=None, grass=True):
+    """Night garden for s03 (everything behind the characters).
+
+    Layout: sky above y≈420; neighbour roofs/tree/pole behind; wooden fence
+    y 478-658 topped by a hedge; the house wall (x<370) with a warm lit shoji
+    window GARDEN_WINDOW spilling light onto the lawn; lawn from
+    GARDEN_GROUND_Y=650 down, stepping stones; hydrangeas (HYDRANGEAS);
+    background grass.  Keep (900..1150, 760..900) clear for Kira
+    (GARDEN_IMPACT).  light=(x, y, r, colour, strength) = Kira's glow tinting
+    grass + a light pool on the lawn.  Follow with draw_grass(..., 'fg').
+    cam_x/cam_y: small pans (px), parallax per layer.
+    """
+    C = sky_colors(phase)
+    P = _garden_parts()
+    if sky:
+        draw_sky(ctx, phase, t, cam_y=cam_y * 0.3 - 250, cam_x=cam_x * 0.2)
+        draw_stars(ctx, phase, t, cam_y=cam_y * 0.3 - 250, cam_x=cam_x * 0.2)
+        draw_clouds(ctx, phase, t, cam_y=cam_y * 0.3 - 250, cam_x=cam_x * 0.2, alpha=0.7)
+    ox, oy = round(-cam_x * 0.6), round(-cam_y * 0.6)
+    P["back"].paint(ctx, _town_cols("mid", C, oy) | dict(b=mix(C["mids"], C["leaf"], 0.5)), ox, oy)
+    _draw_windows(ctx, P["back_wins"], C, t, ox, oy, True)
+    ox, oy = round(-cam_x * 0.85), round(-cam_y * 0.85)
+    leafc = dict(a=C["leaf"], r=C["leaf_mid"], g=mix(C["leaf_mid"], C["leaf_lit"], 0.6), rim=(C["rim"], 0.5))
+    P["hedge"].paint(ctx, leafc, ox, oy)
+    wood = mix(C["wood"], C["near"], 0.3)
+    P["fence"].paint(ctx, dict(a=wood, r=_lighten(wood, 0.06), g=mix(wood, C["rim"], 0.3), b=_darken(wood, 0.5),
+                               rim=(C["rim"], 0.5)), ox, oy)
+    ox, oy = round(-cam_x), round(-cam_y)
+    gc = C["ground"]
+    P["ground"].paint(ctx, dict(a=linear_gradient(0, GARDEN_GROUND_Y + oy, 0, 1080 + oy,
+                                                  [(0, mix(gc, C["fog"], 0.35)), (1, _darken(gc, 0.3))]),
+                                r=(mix(gc, C["grass"], 0.8), 0.9), g=mix(C["stone"], C["stone_lit"], 0.35),
+                                b=_darken(C["stone"], 0.5)), ox, oy)
+    # warm window spill on the lawn
+    wx, wy, ww, wh = GARDEN_WINDOW
+    if window > 0:
+        ctx.save()
+        ctx.restore()
+        draw_light_pool(ctx, 470 + ox, 800 + oy, 330, 120, WINDOW, 0.22 * window)
+    if light is not None:
+        lx, ly, lr, lc, ls = light
+        draw_light_pool(ctx, lx, ly + 10, lr * 1.3, lr * 0.4, lc, 0.5 * ls)
+    if grass:
+        draw_grass(ctx, t, GARDEN_GROUND_Y + 4, "bg", (380, W + 40), phase, seed=31, density=0.8, light=light)
+    for (x, y, sc, sd) in HYDRANGEAS:
+        ctx.save()
+        ctx.translate(x + ox, y + oy)
+        ctx.scale(sc, sc)
+        _paint_phased(ctx, ("hyd", sd), _hydrangea_builder(sd), phase)
+        ctx.restore()
+    if grass:
+        draw_grass(ctx, t, lambda x: 735 + 25 * math.sin(x * 0.01), "bg", (380, W + 40), phase, seed=32,
+                   density=0.5, height=1.2, light=light)
+    # house wall with window
+    wood2 = mix(C["wood"], rgb("#3A2A2A"), 0.4)
+    P["house"].paint(ctx, dict(a=_darken(wood2, 0.25), r=wood2, g=mix(wood2, C["rim"], 0.25), b=_darken(wood2, 0.6)),
+                     ox, oy)
+    if window > 0:
+        f = window * (0.95 + 0.05 * noise1(t * 1.3, 17))
+        g = linear_gradient(0, wy + oy, 0, wy + wh + oy, [(0, WINDOW_HOT, f), (1, WINDOW, f)])
+        ctx.set_source(g)
+        ctx.rectangle(wx + ox, wy + oy, ww, wh)
+        ctx.fill()
+        ctx.set_source_rgba(0.35, 0.2, 0.12, 0.8 * f)
+        ctx.set_line_width(3)
+        for k in range(1, 4):
+            ctx.move_to(wx + ox + ww * k / 4, wy + oy)
+            ctx.line_to(wx + ox + ww * k / 4, wy + oy + wh)
+        for k in range(1, 5):
+            ctx.move_to(wx + ox, wy + oy + wh * k / 5)
+            ctx.line_to(wx + ox + ww, wy + oy + wh * k / 5)
+        ctx.stroke()
+        rg = radial_gradient(wx + ww / 2 + ox, wy + wh / 2 + oy, 0, 330, [(0, WINDOW, 0.3 * f), (1, WINDOW_GLOW, 0)])
+        ctx.set_source(rg)
+        ctx.arc(wx + ww / 2 + ox, wy + wh / 2 + oy, 330, 0, TAU)
+        ctx.fill()
+
+
+# =========================================================================== shrine steps (s04)
+TREAD, RISER = 84.0, 36.0
+STEP_Y0 = 900.0
+SLOPE = RISER / TREAD
+STEPS_ANCHOR = (960.0, 820.0)   # screen point the stair line passes through
+TORII_EVERY, TORII_X0 = 900.0, 700.0
+
+
+def steps_height_at(world_x):
+    """World y of the tread surface under world_x (flat treads, 84 px wide, 36 px risers)."""
+    return STEP_Y0 - math.floor(world_x / TREAD) * RISER
+
+
+def steps_line_y(world_x):
+    """Smoothed stair line (through tread midpoints), good for cameras/jumps."""
+    return STEP_Y0 - (world_x / TREAD - 0.5) * RISER
+
+
+def steps_cam_y(cam_x):
+    """Vertical camera offset matching cam_x (keeps the stairs on the screen diagonal)."""
+    return steps_line_y(cam_x + STEPS_ANCHOR[0]) - STEPS_ANCHOR[1]
+
+
+def steps_to_screen(world_x, world_y, cam_x):
+    return world_x - cam_x, world_y - steps_cam_y(cam_x)
+
+
+_FOREST = {"far": 0.12, "mid": 0.45, "near": 0.75, "fg": 1.35}
+_FTW = 1800
+
+
+def _sugi(L, x, base, h, rng, s=1.0):
+    """Japanese cedar: straight trunk + stacked conical tiers."""
+    ctx = L.ctx
+    tw = h * 0.028 + 3
+    ctx.move_to(x - tw, base)
+    ctx.line_to(x - tw * 0.4, base - h)
+    ctx.line_to(x + tw * 0.4, base - h)
+    ctx.line_to(x + tw, base)
+    ctx.close_path()
+    L.fill(0, 0, 1)
+    ctx.rectangle(x - tw, base - h * 0.7, tw * 0.5, h * 0.7)
+    L.fill(0, 0.4, 1)
+    top = base - h
+    n = int(rng.integers(6, 10))
+    for k in range(n):
+        u = k / n
+        yy = top + h * 0.62 * u + h * 0.04
+        ww = h * (0.06 + 0.17 * u) * rng.uniform(0.85, 1.15)
+        th = h * 0.13
+        ctx.new_path()
+        ctx.move_to(x, yy - th * 0.35)
+        ctx.curve_to(x + ww * 0.4, yy, x + ww * 0.8, yy + th * 0.5, x + ww, yy + th)
+        for j in range(5):
+            ctx.line_to(x + ww * (1 - (j + 0.5) / 5 * 2), yy + th * (0.85 if j % 2 else 1.02))
+        ctx.line_to(x - ww, yy + th)
+        ctx.curve_to(x - ww * 0.8, yy + th * 0.5, x - ww * 0.4, yy, x, yy - th * 0.35)
+        ctx.close_path()
+        L.fill(0, 0, 0)
+        ctx.new_path()
+        ctx.move_to(x, yy - th * 0.35)
+        ctx.curve_to(x - ww * 0.4, yy, x - ww * 0.8, yy + th * 0.5, x - ww, yy + th)
+        ctx.line_to(x - ww * 0.6, yy + th * 0.7)
+        ctx.curve_to(x - ww * 0.3, yy + th * 0.3, x - ww * 0.1, yy, x, yy - th * 0.1)
+        ctx.close_path()
+        L.fill(0, 0.7, 0)
+
+
+@lru_cache(maxsize=8)
+def _forest_tile(layer, seed=9):
+    rng = np.random.default_rng(seed + ("far", "mid", "near", "fg").index(layer) * 17)
+    p = _FOREST[layer]
+    if layer == "far":
+        L = _Coded(W + 800, 1300, -400, 250)
+        ctx = L.ctx
+        for j, (yb, amp, g) in enumerate(((430, 60, 0.7), (520, 50, 0.35))):
+            ctx.new_path()
+            ctx.move_to(-400, 1600)
+            for x in range(-400, W + 401, 8):
+                ctx.line_to(x, yb + amp * noise1(x / 300 + j * 7, 40 + j) + 14 * noise1(x / 40, 50 + j))
+            ctx.line_to(W + 400, 1600)
+            ctx.close_path()
+            L.fill(0, g, 0)
+            for i in range(160):
+                x = rng.uniform(-400, W + 400)
+                y = yb + amp * noise1(x / 300 + j * 7, 40 + j) + rng.uniform(-6, 30)
+                ctx.move_to(x - 6, y + 20)
+                ctx.line_to(x, y - rng.uniform(16, 34))
+                ctx.line_to(x + 6, y + 20)
+                ctx.close_path()
+                L.fill(0, g, 0)
+        L.bake(rim=(1, 2, 0.6))
+        return L
+    # sloped tiles: trees rooted along a line of slope SLOPE, tile repeats every _FTW along x
+    Hmax = {"mid": 900, "near": 1300, "fg": 900}[layer]
+    L = _Coded(_FTW + 600, int(_FTW * SLOPE + Hmax + 300), -300, -Hmax - _FTW * SLOPE)
+    ctx = L.ctx
+    trees = []
+    if layer == "mid":
+        for i in range(22):
+            trees.append(("sugi", rng.uniform(0, _FTW), rng.uniform(500, 850), rng.uniform(0, 60)))
+    elif layer == "near":
+        for i in range(7):
+            trees.append(("sugi", rng.uniform(0, _FTW), rng.uniform(900, 1250), rng.uniform(0, 40)))
+        for i in range(8):
+            trees.append(("bush", rng.uniform(0, _FTW), rng.uniform(50, 110), rng.uniform(10, 50)))
+    else:
+        for i in range(2):
+            trees.append(("leaf", (i + rng.uniform(0.1, 0.4)) * _FTW / 2, rng.uniform(80, 130), 0))
+    trees.sort(key=lambda tr: -tr[3])
+    for kind, u, h, dy in trees:
+        base = -u * SLOPE + dy
+        if kind == "sugi":
+            _sugi(L, u, base + 40, h, rng)
+        elif kind == "bush":
+            _bush(L, u, base + 20, h, rng, 2.5)
+        else:
+            for j in range(7):
+                r = h * rng.uniform(0.4, 0.7)
+                subs = [(0.0, 0.0, r * 0.7)] + [(math.cos(a) * r * 0.6, math.sin(a) * r * 0.5, r * 0.4)
+                                                 for a in np.linspace(0, TAU, 8, endpoint=False)]
+                _draw_clump(L, u + rng.uniform(-h, h), base + 60 + rng.uniform(-h * 0.5, h * 0.3), r, subs, 1.0)
+    L.bake(rim=(2, 3, 0.8), soft=5.0 if layer == "fg" else 0.0)
+    return L
+
+
+def _forest_cols(layer, C):
+    k = {"far": 0.55, "mid": 0.3, "near": 0.12, "fg": 0.0}[layer]
+    base = mix(_darken(C["leaf"], 0.2 if layer != "fg" else 0.6), C["fog"], k)
+    if layer == "far":
+        base = mix(C["far"], C["fog"], 0.2)
+    return dict(a=base, r=mix(base, C["leaf_mid"], 0.4), g=mix(base, C["rim"], 0.35 if layer != "fg" else 0.1),
+                b=mix(_darken(base, 0.3), C["bark"], 0.4), rim=(C["rim"], 0.6 if layer != "fg" else 0.15))
+
+
+def _ground_line(layer):
+    """screen y of a forest layer's ground at screen x=0."""
+    return {"mid": 1081 - 220, "near": 1081 - 90, "fg": 1081 + 330}[layer]
+
+
+def draw_parallax_forest(ctx, cam_x, layer, phase=0.0, t=0.0):
+    """Forest behind (and in front of) the shrine steps. layer: 'far' (distant
+    ridges, parallax .12), 'mid' (cedars .45), 'near' (big cedars/bushes .75),
+    'fg' (blurred foreground leaves 1.35 — draw after the characters)."""
+    C = sky_colors(phase)
+    cy = steps_cam_y(cam_x)
+    p = _FOREST[layer]
+    L = _forest_tile(layer)
+    cols = _forest_cols(layer, C)
+    build = lambda ph, L=L, layer=layer: _coded_to_argb(L, _forest_cols(layer, sky_colors(ph)))
+    if layer == "far":
+        _paint_phased(ctx, ("forest", layer), build, phase, round(-cam_x * p) % 400 - 200,
+                      round(-(cy - steps_cam_y(0)) * p))
+        return
+    # ground under this layer (sloped band, stays fixed on screen)
+    gy0 = _ground_line(layer)
+    if layer != "fg":
+        ctx.move_to(-10, gy0)
+        ctx.line_to(W + 10, gy0 - SLOPE * (W + 20))
+        ctx.line_to(W + 10, H + 10)
+        ctx.line_to(-10, H + 10)
+        ctx.close_path()
+        _src(ctx, cols["a"])
+        ctx.fill()
+    shift = cam_x * p
+    k0 = int(math.floor((shift - 400) / _FTW))
+    for k in range(k0, k0 + 3):
+        ox = k * _FTW - shift
+        if ox > W + 400 or ox + _FTW < -400:
+            continue
+        oy = gy0 + (ox) * -SLOPE
+        _paint_phased(ctx, ("forest", layer), build, phase, round(ox), round(oy))
+
+
+def draw_steps_path(ctx, cam_x, t=0.0, phase=0.0, sky=True, forest=True):
+    """Side-scrolling shrine stairs ascending to the right (s04).
+
+    World space: tread k spans x∈[k*84, (k+1)*84) at y = 900 - 36k.  The
+    camera follows the diagonal: screen = (x - cam_x, y - steps_cam_y(cam_x)),
+    so the stair line always passes through STEPS_ANCHOR=(960, 820).
+    Torii every 900 px from x=700 (frontal, astride the steps), stone lanterns
+    between them.  Draws sky/stars + far/mid/near forest (if flags) + steps.
+    Afterwards draw characters, then draw_parallax_forest(ctx, cam_x, 'fg').
+    """
+    C = sky_colors(phase)
+    cy = steps_cam_y(cam_x)
+    if sky:
+        tilt = (cy - steps_cam_y(0)) * 0.12 - 300
+        draw_sky(ctx, phase, t, cam_y=tilt, cam_x=cam_x * 0.05)
+        draw_stars(ctx, phase, t, cam_y=tilt, cam_x=cam_x * 0.05)
+    if forest:
+        for l in ("far", "mid", "near"):
+            draw_parallax_forest(ctx, cam_x, l, phase, t)
+    k0 = int(math.floor((cam_x - 200) / TREAD))
+    k1 = int(math.ceil((cam_x + W + 200) / TREAD))
+    stone, lit = C["stone"], C["stone_lit"]
+    side = _darken(stone, 0.45)
+    # side wall of the staircase
+    ctx.new_path()
+    ctx.move_to(k0 * TREAD - cam_x, H + 20)
+    for k in range(k0, k1 + 1):
+        y = STEP_Y0 - k * RISER - cy
+        ctx.line_to(k * TREAD - cam_x, y)
+        ctx.line_to((k + 1) * TREAD - cam_x, y)
+    ctx.line_to((k1 + 1) * TREAD - cam_x, H + 20)
+    ctx.close_path()
+    ctx.set_source(linear_gradient(0, 300, 0, 1080, [(0, side), (1, _darken(side, 0.5))]))
+    ctx.fill()
+    # masonry lines on the side wall
+    ctx.set_line_width(1.5)
+    _src(ctx, (_darken(side, 0.5), 0.8))
+    for k in range(k0, k1 + 1):
+        x0 = k * TREAD - cam_x
+        y = STEP_Y0 - k * RISER - cy
+        for j in range(1, 7):
+            yy = y + j * 44
+            if yy > H:
+                break
+            off = (j * 37 + k * 13) % TREAD
+            ctx.move_to(x0, yy)
+            ctx.line_to(x0 + TREAD, yy - 0)
+            ctx.move_to(x0 + off, yy)
+            ctx.line_to(x0 + off, yy + 44)
+    ctx.stroke()
+    # treads: top face (seen slightly from above), nosing highlight, riser
+    rng = np.random.default_rng(3)
+    shades = rng.uniform(-0.08, 0.08, 4096)
+    for k in range(k0, k1 + 1):
+        x0 = k * TREAD - cam_x
+        y = STEP_Y0 - k * RISER - cy
+        v = shades[k % 4096]
+        top = mix(stone, lit, 0.35 + v)
+        ctx.move_to(x0, y)
+        ctx.line_to(x0 + 10, y - 12)
+        ctx.line_to(x0 + TREAD + 10, y - 12)
+        ctx.line_to(x0 + TREAD, y)
+        ctx.close_path()
+        _src(ctx, top)
+        ctx.fill()
+        ctx.rectangle(x0, y, TREAD, RISER)
+        _src(ctx, mix(stone, side, 0.3 - v))
+        ctx.fill()
+        ctx.rectangle(x0, y - 1.5, TREAD, 3)
+        _src(ctx, (lit, 0.85))
+        ctx.fill()
+        ctx.rectangle(x0, y + RISER - 4, TREAD, 4)
+        _src(ctx, (_darken(side, 0.4), 0.8))
+        ctx.fill()
+        if (k * 7) % 5 == 0:
+            _src(ctx, (C["grass_tip"], 0.7))
+            for j in range(4):
+                gx = x0 + 6 + j * 5 + (k % 3) * 20
+                ctx.move_to(gx, y)
+                ctx.line_to(gx + 3 + j, y - 10 - 3 * j)
+                ctx.line_to(gx + 5, y)
+            ctx.fill()
+    # stone lanterns (behind torii pillars) and torii
+    m0 = int(math.floor((cam_x - 600) / (TORII_EVERY / 2)))
+    for m in range(m0, m0 + 8):
+        wx = TORII_X0 + m * TORII_EVERY / 2 + TORII_EVERY / 4
+        if m % 2 == 0:
+            continue
+        sx, sy = steps_to_screen(wx, steps_height_at(wx), cam_x)
+        if -200 < sx < W + 200:
+            draw_toro(ctx, sx, sy - 6, 150, phase, lit=1.0, t=t, seed=m)
+    n0 = int(math.floor((cam_x - 600 - TORII_X0) / TORII_EVERY))
+    for n in range(n0, n0 + 4):
+        wx = TORII_X0 + n * TORII_EVERY
+        xl, xr = wx - 150, wx + 150
+        sxl, syl = steps_to_screen(xl, steps_height_at(xl), cam_x)
+        _, syr = steps_to_screen(xr, steps_height_at(xr), cam_x)
+        if -500 < sxl < W + 300:
+            draw_torii(ctx, sxl + 150, syl - 4, 420, 470, phase=phase, base_r=syr - 4)
+
+
+# =========================================================================== hilltop (s05-s07)
+HILLTOP_HORIZON = 600.0
+HILLTOP_TREE = (330.0, 805.0)     # trunk base, world
+HILLTOP_CAM_MEDIUM = (960.0, 540.0, 1.0)
+HILLTOP_CAM_WIDE = (1150.0, -700.0, 0.27)
+HILLTOP_TORO = (1600.0,)
+_FAR_DEPTH = 0.35
+
+
+def hilltop_ground_y(x):
+    """World y of the summit ground at world x (put Haru's feet here)."""
+    y = 800 + 0.00003 * (x - 700) ** 2
+    y += 220 * smoothstep(1500, 2700, x) ** 1.6 + 1400 * smoothstep(2300, 4600, x)
+    y += 1400 * smoothstep(-400, -2800, x)
+    return y + 6 * noise1(x / 90, 3)
+
+
+def _cam_parts(cam):
+    cx, cy, z = cam if cam is not None else HILLTOP_CAM_MEDIUM
+    zf = 1 + (z - 1) * _FAR_DEPTH
+    cxf = 960 + (cx - 960) * _FAR_DEPTH
+    cyf = 540 + (cy - 540) * _FAR_DEPTH
+    return (cx, cy, z), (cxf, cyf, zf)
+
+
+def hilltop_to_screen(x, y, cam=None):
+    (cx, cy, z), _ = _cam_parts(cam)
+    return (x - cx) * z + 960, (y - cy) * z + 540
+
+
+def hilltop_horizon_screen(cam=None):
+    _, (cxf, cyf, zf) = _cam_parts(cam)
+    return (HILLTOP_HORIZON - cyf) * zf + 540
+
+
+@lru_cache(maxsize=2)
+def _ht_far(seed=4):
+    rng = np.random.default_rng(seed)
+    L = _Coded(5200, 1100, -1700, 440)
+    ctx = L.ctx
+    hz = HILLTOP_HORIZON
+    for j, (yb, amp, sc, g) in enumerate(((hz - 30, 45, 500, 0.8), (hz - 5, 28, 260, 0.45))):
+        ctx.new_path()
+        ctx.move_to(-1700, 1540)
+        for x in range(-1700, 3501, 10):
+            ctx.line_to(x, yb - amp * (0.5 + 0.5 * noise1(x / sc, 60 + j)) - 10 * noise1(x / 50, 70 + j))
+        ctx.line_to(3500, 1540)
+        ctx.close_path()
+        L.fill(0, g, 0)
+    # valley town: rows of tiny roofs (perspective compressed)
+    lights = []
+    for row in range(16):
+        y0r = hz + 14 + row ** 1.45 * 9
+        s = 0.5 + row * 0.12
+        x = -1700 + rng.uniform(0, 20)
+        while x < 3500:
+            w = rng.uniform(9, 22) * s
+            y = y0r + rng.uniform(-5, 5) * s
+            if noise1(x / 260 + row * 0.3, 90) > -0.35:
+                ctx.move_to(x - s, y - 4 * s)
+                ctx.line_to(x + w * 0.3, y - 8 * s)
+                ctx.line_to(x + w * 0.7, y - 8 * s)
+                ctx.line_to(x + w + s, y - 4 * s)
+                ctx.close_path()
+                L.fill(rng.uniform(0.4, 1.0), 0, 0)
+                ctx.rectangle(x, y - 4 * s, w, 3 * s)
+                L.fill(0, 0, rng.uniform(0.3, 0.7))
+                if rng.random() < 0.35:
+                    lights.append((x + rng.uniform(0.2, 0.8) * w, y - 1 * s, 0.6 + 0.12 * row,
+                                   float(rng.uniform(0.2, 0.9)), float(rng.uniform(0, 50))))
+            x += w + rng.uniform(0, 6) * s
+    L.bake(rim=(1, 2, 0.5))
+    return L, lights
+
+
+@lru_cache(maxsize=2)
+def _ht_tree(seed=5):
+    rng = np.random.default_rng(seed)
+    geom = _kusu_geom(seed)
+    sc = 1.18
+    tx, ty = HILLTOP_TREE
+    box = (-600, -480, 1950, 1400)   # x0, y0, w, h (world)
+    T = _Coded(box[2], box[3], box[0], box[1])
+    _draw_kusu_trunk(T, tx, ty, sc, geom, rng)
+    _draw_kusu_canopy(T, tx, ty, sc, geom, which=(0, 1))
+    T.bake(rim=(3, 4, 1.0))
+    F = _Coded(box[2], box[3], box[0], box[1])
+    _draw_kusu_canopy(F, tx, ty, sc, geom, which=(2,))
+    F.bake(rim=(3, 4, 1.0))
+    return T, F
+
+
+def _ht_far_cols(C):
+    hz = HILLTOP_HORIZON
+    base = mix(C["far"], C["fog"], 0.25)
+    return dict(a=linear_gradient(0, hz - 60, 0, hz + 420, [(0, mix(base, C["fog"], 0.3)), (0.25, mix(C["hill"], C["fog"], 0.25)),
+                                                            (1, _darken(C["hill"], 0.3))]),
+                r=(mix(C["hill"], C["roof"], 0.7), 0.8), g=mix(base, C["fog"], 0.45), b=_darken(C["hill"], 0.35),
+                rim=(C["rim"], 0.35))
+
+
+def _tree_cols(C):
+    return dict(a=C["leaf"], r=C["leaf_mid"], g=mix(C["leaf_mid"], C["leaf_lit"], 0.75), b=C["bark"],
+                rim=(C["rim"], 0.7))
+
+
+def _ht_tree_builder(which):
+    def build(phase):
+        T, F = _ht_tree()
+        return _coded_to_argb(T if which == 0 else F, _tree_cols(sky_colors(phase)))
+    return build
+
+
+@lru_cache(maxsize=2)
+def _ht_tufts(seed=6):
+    rng = np.random.default_rng(seed)
+    xs = np.sort(rng.uniform(-2800, 4600, 2600))
+    return xs, rng.uniform(10, 30, len(xs)), rng.normal(0, 0.35, len(xs)), rng.uniform(0, TAU, len(xs))
+
+
+def draw_hilltop(ctx, phase, t=0.0, cam=None, sky=True, stars=True, sun_x=1500.0, tree=True, far=True,
+                 ground=True, props=True, wind=1.0):
+    """Hilltop summit (s05-s07): sky, horizon mountains, the town far below,
+    grassy summit, giant camphor tree (left), shimenawa, hokora + tōrō.
+
+    cam = (cx, cy, zoom): world point (cx, cy) goes to screen centre, scaled
+    by zoom.  HILLTOP_CAM_MEDIUM (identity) is the s05 framing: tree trunk
+    at x≈330, canopy fills the top-left (lower edge y≈300-380), ground
+    y≈800-860, horizon y=600, open sky/valley on the right.
+    HILLTOP_CAM_WIDE (zoom .27) is the s06 extreme wide: small hill + tree at
+    the bottom, huge sky.  Distant layers zoom/pan with depth 0.35.
+    Place characters with hilltop_ground_y(x) + hilltop_to_screen().
+    Follow with draw_hilltop_fg() for grass in front of the characters.
+    """
+    C = sky_colors(phase)
+    (cx, cy, z), (cxf, cyf, zf) = _cam_parts(cam)
+    hs = hilltop_horizon_screen(cam)
+    if sky:
+        cam_y = (HORIZON_Y - hs) / SKY_PAR
+        draw_sky(ctx, phase, t, cam_y=cam_y, sun_x=sun_x)
+        if stars:
+            draw_stars(ctx, phase, t, cam_y=cam_y)
+        draw_clouds(ctx, phase, t, cam_y=cam_y, alpha=0.8)
+    if far:
+        L, lights = _ht_far()
+        ctx.save()
+        ctx.translate(960, 540)
+        ctx.scale(zf, zf)
+        ctx.translate(-cxf, -cyf)
+        hz = HILLTOP_HORIZON
+        base = mix(C["far"], C["fog"], 0.25)
+        _paint_phased(ctx, "ht_far", lambda ph: _coded_to_argb(L, _ht_far_cols(sky_colors(ph))), phase)
+        wf = C["windows"]
+        _unused = dict(a=linear_gradient(0, hz - 60, 0, hz + 420, [(0, mix(base, C["fog"], 0.3)), (0.25, mix(C["hill"], C["fog"], 0.25)),
+                                                                     (1, _darken(C["hill"], 0.3))]),
+                          r=(mix(C["hill"], C["roof"], 0.7), 0.8), g=mix(base, C["fog"], 0.45), b=_darken(C["hill"], 0.35),
+                          rim=(C["rim"], 0.35))
+        if wf > 0.02:
+            for (x, y, r, thr, sd) in lights:
+                a = wf * smoothstep(thr - 0.15, thr + 0.15, wf) * (0.85 + 0.15 * noise1(t * 2 + sd, 5))
+                if a > 0.02:
+                    _warm_dot(ctx, x, y, r, a)
+        # valley mist
+        ctx.rectangle(-2000, hz - 20, 6000, 200)
+        ctx.set_source(linear_gradient(0, hz - 20, 0, hz + 180, [(0, C["fog"], 0), (0.4, C["fog"], 0.25 * C["mist"] + 0.05),
+                                                                  (1, C["fog"], 0)]))
+        ctx.fill()
+        ctx.restore()
+    ctx.save()
+    ctx.translate(960, 540)
+    ctx.scale(z, z)
+    ctx.translate(-cx, -cy)
+    x0 = cx - 960 / z - 50
+    x1 = cx + 960 / z + 50
+    if ground:
+        xs = np.linspace(x0, x1, 240)
+        ctx.new_path()
+        ctx.move_to(x0, cy + 540 / z + 100)
+        for x in xs:
+            ctx.line_to(x, hilltop_ground_y(x))
+        ctx.line_to(x1, cy + 540 / z + 100)
+        ctx.close_path()
+        gc = mix(C["grass"], C["ground"], 0.35)
+        ctx.set_source(linear_gradient(0, 780, 0, 1150, [(0, gc), (1, _darken(gc, 0.45))]))
+        ctx.fill()
+        ctx.new_path()
+        for i, x in enumerate(xs):
+            ctx.line_to(x, hilltop_ground_y(x) + 1)
+        ctx.set_line_width(4 / max(z, 0.3))
+        _src(ctx, (C["rim"], 0.6))
+        ctx.stroke()
+        # tufts along the edge
+        X, Hh, Ln, Ph = _ht_tufts()
+        sel = (X > x0) & (X < x1)
+        _src(ctx, mix(C["grass"], C["grass_tip"], 0.5))
+        for x, h, ln, ph in zip(X[sel], Hh[sel], Ln[sel], Ph[sel]):
+            y = hilltop_ground_y(x) + 2
+            a = ln + wind * 0.12 * math.sin(t * 1.4 + x * 0.01 + ph)
+            ctx.move_to(x - 3, y)
+            ctx.line_to(x + math.sin(a) * h, y - math.cos(a) * h)
+            ctx.line_to(x + 3, y)
+        ctx.fill()
+    if props:
+        # hokora (small stone shrine) near the trunk, tōrō on the right
+        hx = 700
+        hy = hilltop_ground_y(hx)
+        _src(ctx, C["stone"])
+        ctx.rectangle(hx - 34, hy - 18, 68, 18)
+        ctx.fill()
+        ctx.rectangle(hx - 24, hy - 62, 48, 44)
+        ctx.fill()
+        _src(ctx, _darken(C["stone"], 0.5))
+        ctx.rectangle(hx - 12, hy - 52, 24, 30)
+        ctx.fill()
+        ctx.move_to(hx - 44, hy - 58)
+        ctx.curve_to(hx - 20, hy - 66, hx - 10, hy - 88, hx, hy - 96)
+        ctx.curve_to(hx + 10, hy - 88, hx + 20, hy - 66, hx + 44, hy - 58)
+        ctx.close_path()
+        _src(ctx, mix(C["stone"], C["stone_lit"], 0.3))
+        ctx.fill()
+        tx = 1620
+        draw_toro(ctx, tx, hilltop_ground_y(tx) + 4, 190, phase, lit=clamp(C["windows"] * 1.1), t=t, seed=3)
+    if tree:
+        sway = wind * (2.0 * math.sin(t * 0.8) + 1.2 * math.sin(t * 1.9 + 1))
+        _paint_phased(ctx, "ht_tree", _ht_tree_builder(0), phase, sway * 0.4, 0)
+        _paint_phased(ctx, "ht_fringe", _ht_tree_builder(1), phase, sway, abs(sway) * 0.2)
+        # shimenawa rope with shide around the trunk
+        tx, ty = HILLTOP_TREE
+        ry = ty - 230
+        straw = mix(rgb("#C9A86A"), C["mids"], 0.55 * (1 - C["sun"]))
+        ctx.move_to(tx - 70, ry - 6)
+        ctx.curve_to(tx - 30, ry + 14, tx + 30, ry + 14, tx + 72, ry - 6)
+        ctx.set_line_width(16)
+        _src(ctx, straw)
+        ctx.stroke()
+        _src(ctx, (_darken(straw, 0.4), 0.8))
+        ctx.set_line_width(2)
+        for k in range(12):
+            xx = tx - 64 + k * 11.5
+            ctx.move_to(xx, ry - 4 + 8 * math.sin(k / 11 * math.pi) - 6)
+            ctx.line_to(xx + 6, ry + 4 + 8 * math.sin(k / 11 * math.pi))
+        ctx.stroke()
+        paper = mix((0.97, 0.96, 0.92), C["rim"], 0.35 * (1 - C["sun"]))
+        for xx in (tx - 40, tx, tx + 40):
+            yy = ry + 12
+            sw = 2 * math.sin(t * 2 + xx)
+            ctx.move_to(xx, yy)
+            for j, (dx, dy) in enumerate(((8, 0), (8, 10), (0, 10), (0, 22), (-7, 22), (-7, 34), (1, 34), (1, 46),
+                                         (-5, 46), (-5, 34), (-12, 34), (-12, 22), (-5, 22), (-5, 10), (-2, 10), (-2, 0))):
+                ctx.line_to(xx + dx + sw * dy / 46, yy + dy)
+            ctx.close_path()
+            _src(ctx, paper)
+            ctx.fill()
+    ctx.restore()
+
+
+def draw_hilltop_fg(ctx, phase, t=0.0, cam=None, wind=1.0):
+    """Foreground grass for the hilltop (draw after the characters)."""
+    (cx, cy, z), _ = _cam_parts(cam)
+    if z < 0.6:
+        return
+    ctx.save()
+    ctx.translate(960, 540)
+    ctx.scale(z, z)
+    ctx.translate(-cx, -cy)
+    x0, x1 = cx - 960 / z - 40, cx + 960 / z + 40
+    draw_grass(ctx, t, lambda x: max(hilltop_ground_y(x) + 170, cy + 540 / z - 20), "fg", (x0, x1), phase,
+               seed=45, density=0.45, height=0.9, wind=wind)
+    ctx.restore()
+
+
+# =========================================================================== attic window (s02)
+ATTIC_WIN = (960.0, 430.0, 300.0)   # round window centre x, y, radius (opening)
+ATTIC_SILL_Y = 770.0                # top edge of the sill's front face
+ATTIC_VIEW_SCALE = 0.4
+
+
+@lru_cache(maxsize=1)
+def _attic_wall():
+    rng = np.random.default_rng(12)
+    cx, cy, r = ATTIC_WIN
+    s = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+    ctx = cairo.Context(s)
+    # warm plank wall lit by a lamp at lower left
+    ctx.set_source(linear_gradient(0, 0, 0, H, [(0, "#3A2419"), (1, "#5A3522")]))
+    ctx.paint()
+    x = 0
+    while x < W:
+        pw = rng.uniform(95, 140)
+        tone = rng.uniform(-0.06, 0.06)
+        ctx.rectangle(x, 0, pw, H)
+        ctx.set_source_rgba(*(mix(rgb("#6B4028"), (0, 0, 0), 0.5 - tone)), 0.25)
+        ctx.fill()
+        for j in range(9):
+            gx = x + rng.uniform(8, pw - 8)
+            ctx.move_to(gx, 0)
+            for yy in range(0, H + 40, 40):
+                ctx.line_to(gx + 5 * math.sin(yy / rng.uniform(90, 200) + j), yy)
+            ctx.set_line_width(rng.uniform(0.8, 2.2))
+            ctx.set_source_rgba(0.12, 0.06, 0.03, rng.uniform(0.1, 0.25))
+            ctx.stroke()
+        if rng.random() < 0.5:
+            kx, ky = x + pw / 2 + rng.uniform(-20, 20), rng.uniform(100, 1000)
+            ctx.save()
+            ctx.translate(kx, ky)
+            ctx.scale(1, 2.2)
+            for rr in (9, 6, 3):
+                ctx.arc(0, 0, rr, 0, TAU)
+                ctx.set_source_rgba(0.12, 0.06, 0.03, 0.18)
+                ctx.set_line_width(1.2)
+                ctx.stroke()
+            ctx.restore()
+        ctx.rectangle(x, 0, 3, H)
+        ctx.set_source_rgba(0.08, 0.04, 0.02, 0.6)
+        ctx.fill()
+        x += pw
+    # lamp light
+    rg = radial_gradient(150, 900, 0, 1500, [(0, "#FFB060", 0.45), (0.4, "#E08040", 0.18), (1, "#E08040", 0)])
+    ctx.set_source(rg)
+    ctx.paint()
+    # sloped attic ceiling + rafters
+    for sgn in (-1, 1):
+        x0 = 0 if sgn < 0 else W
+        ctx.move_to(x0, 0)
+        ctx.line_to(x0, 330)
+        ctx.line_to(x0 - sgn * 520, 0)
+        ctx.close_path()
+        ctx.set_source(linear_gradient(x0, 0, x0 - sgn * 400, 250, [(0, "#1C110C"), (1, "#2E1C13")]))
+        ctx.fill()
+        ctx.move_to(x0, 330)
+        ctx.line_to(x0 - sgn * 520, 0)
+        ctx.set_line_width(26)
+        ctx.set_source_rgb(*rgb("#241610"))
+        ctx.stroke()
+        ctx.move_to(x0, 318)
+        ctx.line_to(x0 - sgn * 506, -2)
+        ctx.set_line_width(3)
+        ctx.set_source_rgba(1, 0.7, 0.4, 0.25)
+        ctx.stroke()
+    # horizontal beam at top
+    ctx.rectangle(0, 58, W, 34)
+    ctx.set_source_rgb(*rgb("#2A1A12"))
+    ctx.fill()
+    ctx.rectangle(0, 88, W, 4)
+    ctx.set_source_rgba(1, 0.75, 0.45, 0.2)
+    ctx.fill()
+    # cut the window hole
+    ctx.set_operator(cairo.OPERATOR_CLEAR)
+    ctx.arc(cx, cy, r, 0, TAU)
+    ctx.fill()
+    ctx.set_operator(cairo.OPERATOR_OVER)
+    # frame ring: shadow, wood ring, inner bevel
+    ctx.arc(cx, cy + 6, r + 50, 0, TAU)
+    ctx.arc_negative(cx, cy, r + 2, TAU, 0)
+    ctx.set_source_rgba(0.05, 0.02, 0.01, 0.35)
+    ctx.fill()
+    ctx.arc(cx, cy, r + 42, 0, TAU)
+    ctx.arc_negative(cx, cy, r, TAU, 0)
+    ctx.set_source(radial_gradient(cx - 200, cy + 250, 0, r * 2.4, [(0, "#9A6238"), (0.5, "#6E4226"), (1, "#3E2415")]))
+    ctx.fill()
+    for rr, a, col in ((r + 3, 0.9, (0.22, 0.12, 0.07)), (r + 40, 0.5, (0.9, 0.6, 0.35)), (r + 14, 0.25, (0.2, 0.1, 0.05))):
+        ctx.arc(cx, cy, rr, 0, TAU)
+        ctx.set_line_width(3)
+        ctx.set_source_rgba(*col, a)
+        ctx.stroke()
+    # cool moonlight on the inner bevel (upper right)
+    ctx.arc(cx, cy, r + 5, -1.9, 0.2)
+    ctx.set_line_width(5)
+    ctx.set_source_rgba(0.6, 0.7, 1.0, 0.35)
+    ctx.stroke()
+    s.flush()
+    return s
+
+
+def _attic_view(phase):
+    """Baked window view (sky, stars, moon, town) — static per phase bucket."""
+    cx, cy, r = ATTIC_WIN
+    k = ATTIC_VIEW_SCALE
+    s = cairo.ImageSurface(cairo.FORMAT_ARGB32, int(2 * r + 8), int(2 * r + 8))
+    ctx = cairo.Context(s)
+    ctx.arc(r + 4, r + 4, r + 2, 0, TAU)
+    ctx.clip()
+    ctx.translate(r + 4, r + 4)
+    ctx.scale(k, k)
+    ctx.translate(-1120, -500)
+    draw_sky(ctx, phase, 0.0, cam_y=-120)
+    draw_stars(ctx, phase, 0.0, cam_y=-120)
+    draw_moon(ctx, 620, 150, 34, phase, 0.0)
+    draw_town(ctx, "all", phase, 0.0, cam_y=-40)
+    s.flush()
+    return s, cx - r - 4, cy - r - 4
+
+
+def draw_attic_window(ctx, t, phase=0.0, view_fn=None, flash=0.0, lamp=1.0, chime=True):
+    """Cosy attic interior with a round window onto the night town (s02).
+
+    The view (sky, stars, moon, town) is baked per phase bucket inside the
+    circular opening ATTIC_WIN at scale ATTIC_VIEW_SCALE; view_fn(ctx) is called with
+    the clip and the view transform active (town/sky screen coordinates) so a
+    scene can add the passing star / garden glow inside the window.
+    flash 0..1 washes the room with cool light (the streak at 7.6 s).
+    Draw Haru after this, then draw_attic_sill() in front of her.
+    """
+    cx, cy, r = ATTIC_WIN
+    k = ATTIC_VIEW_SCALE
+    _paint_phased(ctx, "attic_view", _attic_view, phase)
+    if view_fn is not None:
+        ctx.save()
+        ctx.arc(cx, cy, r + 2, 0, TAU)
+        ctx.clip()
+        ctx.translate(cx, cy)
+        ctx.scale(k, k)
+        ctx.translate(-1120, -500)
+        view_fn(ctx)
+        ctx.restore()
+    # faint glass reflection
+    ctx.save()
+    ctx.arc(cx, cy, r, 0, TAU)
+    ctx.clip()
+    ctx.move_to(cx - r, cy + r * 0.2)
+    ctx.line_to(cx + r * 0.2, cy - r)
+    ctx.line_to(cx + r * 0.5, cy - r)
+    ctx.line_to(cx - r, cy + r * 0.5)
+    ctx.close_path()
+    ctx.set_source_rgba(0.8, 0.85, 1.0, 0.05)
+    ctx.fill()
+    ctx.restore()
+    ctx.set_source_surface(_attic_wall(), 0, 0)
+    ctx.paint()
+    f = lamp * (0.92 + 0.08 * noise1(t * 2.5, 21))
+    rg = radial_gradient(150, 950, 0, 900, [(0, WINDOW, 0.12 * f), (1, WINDOW, 0)])
+    ctx.set_source(rg)
+    ctx.paint()
+    # moonlight falling from the window into the room
+    ctx.save()
+    ctx.set_operator(cairo.OPERATOR_SCREEN)
+    rg = radial_gradient(cx, cy + 250, 0, 700, [(0, (0.45, 0.55, 0.95), 0.18), (1, (0.45, 0.55, 0.95), 0)])
+    ctx.set_source(rg)
+    ctx.paint()
+    if flash > 0:
+        ctx.set_source(radial_gradient(cx, cy, 0, 1400, [(0, (0.95, 0.95, 1.0), 0.6 * flash), (1, (0.7, 0.8, 1.0), 0.1 * flash)]))
+        ctx.paint()
+    ctx.restore()
+    if chime:
+        ctx.save()
+        ctx.translate(cx + r * 0.98, 92)
+        ctx.scale(1.35, 1.35)
+        draw_furin(ctx, 0, 0, t)
+        ctx.restore()
+    draw_dust_motes(ctx, t, (300, 300, 1100, 1000), 50, seed=8, alpha=0.35, light=(300, 900, 900))
+
+
+def draw_furin(ctx, x, y, t, length=150.0):
+    """Glass wind chime hanging from (x, y); sways with t."""
+    ang = 0.10 * math.sin(t * 1.6) + 0.05 * math.sin(t * 3.3 + 1)
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(ang)
+    ctx.move_to(0, 0)
+    ctx.line_to(0, length * 0.55)
+    ctx.set_line_width(1.5)
+    ctx.set_source_rgba(0.9, 0.85, 0.75, 0.8)
+    ctx.stroke()
+    by = length * 0.55
+    br = 26
+    # glass bell
+    ctx.move_to(-br, by + br * 1.1)
+    ctx.curve_to(-br, by - br * 0.2, -br * 0.5, by - br * 0.1, 0, by - br * 0.05)
+    ctx.curve_to(br * 0.5, by - br * 0.1, br, by - br * 0.2, br, by + br * 1.1)
+    ctx.close_path()
+    ctx.set_source(linear_gradient(-br, 0, br, 0, [(0, (0.85, 0.9, 1.0), 0.55), (0.5, (0.7, 0.8, 1.0), 0.25),
+                                                   (1, (1.0, 0.8, 0.6), 0.5)]))
+    ctx.fill_preserve()
+    ctx.set_source_rgba(1, 1, 1, 0.7)
+    ctx.set_line_width(1.2)
+    ctx.stroke()
+    # painted goldfish + waves
+    ctx.set_source_rgba(0.9, 0.2, 0.2, 0.85)
+    ctx.save()
+    ctx.translate(-6, by + br * 0.55)
+    ctx.scale(1, 0.55)
+    ctx.arc(0, 0, 7, 0, TAU)
+    ctx.restore()
+    ctx.fill()
+    ctx.move_to(0, by + br * 0.55)
+    ctx.line_to(8, by + br * 0.35)
+    ctx.line_to(8, by + br * 0.75)
+    ctx.close_path()
+    ctx.fill()
+    ctx.set_source_rgba(0.3, 0.5, 0.95, 0.7)
+    ctx.set_line_width(2)
+    ctx.move_to(-br + 3, by + br * 0.95)
+    ctx.curve_to(-10, by + br * 0.8, 10, by + br * 1.05, br - 3, by + br * 0.9)
+    ctx.stroke()
+    ctx.set_source_rgba(1, 1, 1, 0.8)
+    ctx.move_to(-br * 0.6, by + br * 0.1)
+    ctx.line_to(-br * 0.7, by + br * 0.8)
+    ctx.set_line_width(2.5)
+    ctx.stroke()
+    # clapper + tanzaku strip (swings a bit more)
+    ctx.rotate(ang * 1.5)
+    ctx.move_to(0, by)
+    ctx.line_to(0, by + br * 1.6)
+    ctx.set_line_width(1)
+    ctx.set_source_rgba(0.9, 0.85, 0.75, 0.8)
+    ctx.stroke()
+    ctx.rectangle(-9, by + br * 1.6, 18, length * 0.55)
+    ctx.set_source_rgb(0.62, 0.78, 0.95)
+    ctx.fill()
+    ctx.set_source_rgba(0.2, 0.25, 0.45, 0.6)
+    for j in range(4):
+        ctx.rectangle(-2, by + br * 1.6 + 12 + j * 16, 4, 9)
+    ctx.fill()
+    ctx.restore()
+
+
+def draw_attic_sill(ctx, t=0.0, phase=0.0, lamp=1.0):
+    """Wooden sill in front of the window (draw after the character)."""
+    cx, cy, r = ATTIC_WIN
+    x0, x1 = cx - r - 260, cx + r + 260
+    y = ATTIC_SILL_Y
+    ctx.save()
+    # top face (perspective band)
+    ctx.move_to(x0 + 30, y - 38)
+    ctx.line_to(x1 - 30, y - 38)
+    ctx.line_to(x1, y)
+    ctx.line_to(x0, y)
+    ctx.close_path()
+    ctx.set_source(linear_gradient(x0, 0, x1, 0, [(0, "#B07A48"), (0.5, "#8C5E38"), (1, "#6E4A2E")]))
+    ctx.fill()
+    # cool window light on the back edge of the sill
+    ctx.move_to(x0 + 30, y - 38)
+    ctx.line_to(x1 - 30, y - 38)
+    ctx.line_to(x1 - 24, y - 30)
+    ctx.line_to(x0 + 24, y - 30)
+    ctx.close_path()
+    ctx.set_source(linear_gradient(cx - r, 0, cx + r, 0, [(0, (0.6, 0.7, 1.0), 0), (0.5, (0.6, 0.7, 1.0), 0.35),
+                                                          (1, (0.6, 0.7, 1.0), 0)]))
+    ctx.fill()
+    for j in range(5):
+        yy = y - 32 + j * 7
+        ctx.move_to(x0 + 30, yy)
+        ctx.curve_to(cx - 200, yy + 3, cx + 200, yy - 3, x1 - 30, yy)
+        ctx.set_source_rgba(0.3, 0.16, 0.08, 0.25)
+        ctx.set_line_width(1)
+        ctx.stroke()
+    # front face + shadow
+    ctx.rectangle(x0, y, x1 - x0, 46)
+    ctx.set_source(linear_gradient(0, y, 0, y + 46, [(0, "#7A4E2C"), (1, "#4A2C18")]))
+    ctx.fill()
+    ctx.rectangle(x0, y, x1 - x0, 3)
+    ctx.set_source_rgba(1, 0.85, 0.6, 0.5)
+    ctx.fill()
+    ctx.rectangle(x0, y + 46, x1 - x0, 40)
+    ctx.set_source(linear_gradient(0, y + 46, 0, y + 86, [(0, (0.08, 0.04, 0.02), 0.6), (1, (0.08, 0.04, 0.02), 0)]))
+    ctx.fill()
+    rg = radial_gradient(x0, y, 0, 700, [(0, WINDOW, 0.25 * lamp), (1, WINDOW, 0)])
+    ctx.set_source(rg)
+    ctx.rectangle(x0, y - 40, x1 - x0, 90)
+    ctx.fill()
+    ctx.restore()
