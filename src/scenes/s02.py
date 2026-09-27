@@ -25,6 +25,7 @@ from common.core import (clamp, lerp, smoothstep, ease_in_out, ease_out, ease_in
                          spring, TAU)
 from common.characters import draw_haru, draw_lantern  # noqa: E402
 
+W_ = core.W
 START = core.scene_bounds("s02")[0]
 CX, CY, R = world.ATTIC_WIN
 K = world.ATTIC_VIEW_SCALE
@@ -44,7 +45,7 @@ GLOW_T = (650.0, 960.0)
 GLOW_S = (CX + (GLOW_T[0] - 1120) * K, CY + (GLOW_T[1] - 500) * K)
 
 HARU_X = 1045.0
-HARU_Y = 1845.0       # virtual feet point (off-screen) for the bust shot
+HARU_Y = 1820.0       # virtual feet point (off-screen) for the bust shot
 HARU_S = 3.0
 
 LANT_REL = 0.62       # lantern scale relative to Haru
@@ -71,7 +72,11 @@ def glow_amt(t):
         return 0.0
     u = t - T_LAND
     bloom = ease_out(u / 0.35) * (1 + 0.6 * math.exp(-u * 4))
-    return bloom * (0.82 + 0.18 * math.sin(u * 3.2) + 0.05 * math.sin(u * 7.3 + 1))
+    base = bloom * (0.82 + 0.18 * math.sin(u * 3.2) + 0.05 * math.sin(u * 7.3 + 1))
+    # during the empty-window hold the glow "breathes" visibly, like a heartbeat
+    hold = smoothstep(3.9, 4.5, t)
+    beat = 0.5 + 0.5 * math.sin((t - 4.0) * 4.2 - 1.2)
+    return base * (1 - hold) + hold * (0.75 + 0.75 * beat ** 2)
 
 
 def star_state(t):
@@ -123,6 +128,80 @@ def view_fn_factory(t):
                 world.draw_sparkles(ctx, u, (gx, gy), n=36, speed=380, life=1.2, gravity=260, seed=5,
                                     spread=math.pi * 0.9, direction=-math.pi / 2)
     return view_fn
+
+
+_SEAT = None
+
+
+def _seat_surface():
+    """Opaque window-seat / wainscot panel under the sill (static, cached per process)."""
+    global _SEAT
+    if _SEAT is not None:
+        return _SEAT
+    x0, x1, y0, y1 = -200, W_ + 200, SILL_Y, 1300
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, x1 - x0, y1 - int(y0))
+    c = cairo.Context(surf)
+    c.translate(-x0, -y0)
+    c.set_source(core.linear_gradient(0, y0, 0, y1, [(0, "#3E2416"), (1, "#24130B")]))
+    c.rectangle(x0, y0, x1 - x0, y1 - y0)
+    c.fill()
+    rng = np.random.default_rng(21)
+    # raised panels between stiles
+    pw = 300
+    x = x0 + 40
+    while x < x1:
+        px0, px1 = x + 26, x + pw - 26
+        py0, py1 = y0 + 92, y1 - 60
+        c.rectangle(px0, py0, px1 - px0, py1 - py0)
+        c.set_source(core.linear_gradient(0, py0, 0, py1, [(0, "#4A2B1A"), (1, "#2C170D")]))
+        c.fill()
+        # grain
+        for j in range(7):
+            gx = rng.uniform(px0 + 6, px1 - 6)
+            c.move_to(gx, py0)
+            for yy in range(int(py0), int(py1) + 30, 30):
+                c.line_to(gx + 4 * math.sin(yy / rng.uniform(60, 140) + j), min(yy, py1))
+            c.set_line_width(rng.uniform(0.8, 1.8))
+            c.set_source_rgba(0.1, 0.05, 0.02, rng.uniform(0.15, 0.3))
+            c.stroke()
+        # bevel: light top/left edge, dark bottom/right
+        c.set_line_width(3)
+        c.move_to(px0, py1); c.line_to(px0, py0); c.line_to(px1, py0)
+        c.set_source_rgba(1, 0.75, 0.45, 0.18); c.stroke()
+        c.move_to(px1, py0); c.line_to(px1, py1); c.line_to(px0, py1)
+        c.set_source_rgba(0.05, 0.02, 0.01, 0.5); c.stroke()
+        # stile groove
+        c.rectangle(x + pw - 2, y0 + 60, 3, y1 - y0)
+        c.set_source_rgba(0.06, 0.03, 0.01, 0.6); c.fill()
+        x += pw
+    # top rail (continues the sill line across the whole wall)
+    c.rectangle(x0, y0, x1 - x0, 60)
+    c.set_source(core.linear_gradient(0, y0, 0, y0 + 60, [(0, "#5A3521"), (1, "#3A2114")]))
+    c.fill()
+    c.rectangle(x0, y0 + 58, x1 - x0, 3)
+    c.set_source_rgba(0.05, 0.02, 0.01, 0.6); c.fill()
+    # lamp light from lower-left
+    c.set_source(core.radial_gradient(150, 950, 0, 1300, [(0, "#FFB060", 0.32), (0.45, "#E08040", 0.12),
+                                                          (1, "#E08040", 0)]))
+    c.rectangle(x0, y0, x1 - x0, y1 - y0)
+    c.fill()
+    # soft top shadow cast by the sill
+    c.set_source(core.linear_gradient(0, y0, 0, y0 + 130, [(0, (0.04, 0.02, 0.01), 0.7), (1, (0.04, 0.02, 0.01), 0)]))
+    c.rectangle(x0, y0, x1 - x0, 130)
+    c.fill()
+    surf.flush()
+    _SEAT = (surf, x0, y0)
+    return _SEAT
+
+
+def draw_window_seat(ctx, t):
+    surf, x0, y0 = _seat_surface()
+    ctx.set_source_surface(surf, x0, y0)
+    ctx.paint()
+    # warm spill from the garden glow / lamp flicker
+    g = glow_amt(t)
+    if g > 0:
+        world.draw_light_pool(ctx, GLOW_S[0] - 60, SILL_Y + 60, 420, 110, "#FFB060", 0.08 * g)
 
 
 def chime_swing(t):
@@ -274,10 +353,10 @@ def camera(t):
     """(zoom, cx, cy, dx, dy) — slow push-in around the window, shake on the jump."""
     z = 1.05 + 0.08 * ease_in_out(t / 3.0)
     z += 0.025 * math.exp(-max(0, t - T_STAR - 0.1) * 3) * (t > T_STAR + 0.1)   # punch on the flash
-    hold = ease_in_out((t - 4.0) / 2.0)
-    z += 0.08 * hold                                                             # drift toward the glow
-    fx = lerp(975, 935, ease_in_out((t - 3.3) / 1.2)) - 40 * hold
-    fy = 520 + 35 * hold
+    hold = ease_in_out((t - 3.9) / 2.1)
+    z += 0.12 * hold                                                             # drift toward the glow
+    fx = lerp(975, 935, ease_in_out((t - 3.3) / 1.2)) - 70 * hold
+    fy = 520 + 45 * hold
     dx = 3 * noise1(t * 0.7, 3)
     dy = 3 * noise1(t * 0.6, 9)
     sh = 0.0
@@ -330,6 +409,7 @@ def _draw_scene(ctx, t):
                 draw_haru(ctx, x2, y2, s2, **{k_: v for k_, v in kw2.items() if v is not None or k_ == "rim"})
         draw_haru(ctx, x, y, s, **{k_: v for k_, v in kw.items() if v is not None or k_ == "rim"})
 
+    draw_window_seat(ctx, t)
     world.draw_attic_sill(ctx, tg, 0.0)
 
     if lantern_on_sill:

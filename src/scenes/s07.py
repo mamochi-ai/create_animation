@@ -117,7 +117,7 @@ def _rim_from_mask(alpha, dx, dy, blur_r=2.0):
     sx0, sx1 = max(0, dx), w + min(0, dx)
     sh[sy0:sy1, sx0:sx1] = alpha[sy0 - dy:sy1 - dy, sx0 - dx:sx1 - dx]
     r = np.clip(alpha - sh, 0, 1)
-    return core.blur(r[..., None], blur_r)[..., 0]
+    return core.blur(r[..., None], blur_r, downscale=2)[..., 0]
 
 
 def _warm_grade(img, t):
@@ -194,15 +194,67 @@ def _haru_pose(t, tg):
                 bounce=bounce, wind=1.1, wind_dir=-1, rim=RIM, light="right")
 
 
+def _screen_glow(img, src_rgb, radius, strength, tint=None, box=None, ds=None):
+    """add_glow restricted to a box (x0, y0, x1, y1) and/or with a forced downscale."""
+    if box is None:
+        box = (0, 0, core.W, core.H)
+    pad = int(radius * 3)
+    x0, y0 = max(0, int(box[0]) - pad), max(0, int(box[1]) - pad)
+    x1, y1 = min(core.W, int(box[2]) + pad), min(core.H, int(box[3]) + pad)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return img
+    g = core.blur(np.ascontiguousarray(src_rgb[y0:y1, x0:x1]), radius, downscale=ds)
+    if tint is not None:
+        g = g * np.array(tint, np.float32)
+    sub = img[y0:y1, x0:x1, :3]
+    sub[...] = 1 - (1 - sub) * (1 - np.clip(g * strength, 0, 1))
+    return img
+
+
+def _over_box(img, src, box, opacity=1.0):
+    x0, y0 = max(0, int(box[0])), max(0, int(box[1]))
+    x1, y1 = min(core.W, int(box[2])), min(core.H, int(box[3]))
+    if x1 > x0 and y1 > y0:
+        core.over(img[y0:y1, x0:x1], src[y0:y1, x0:x1], opacity)
+
+
+def _bloom(img, threshold=0.86, radius=38.0, strength=0.38):
+    """core.bloom with both blur passes done at reduced resolution (same look, faster)."""
+    rgbp = img[..., :3]
+    lum = rgbp.max(axis=2, keepdims=True)
+    bright = rgbp * np.clip((lum - threshold) / (1 - threshold + 1e-6), 0, 1)
+    g = core.blur(bright, radius, downscale=6) * strength + core.blur(bright, radius * 0.3, downscale=3) * strength * 0.6
+    img[..., :3] = 1 - (1 - rgbp) * (1 - np.clip(g, 0, 1))
+    return img
+
+
+_VIG = None
+
+
+def _vignette(img, strength=0.32, color=(0.16, 0.08, 0.10)):
+    global _VIG
+    if _VIG is None:
+        yy, xx = np.mgrid[0:core.H, 0:core.W].astype(np.float32)
+        d = np.sqrt(((xx - core.W / 2) / (core.W * 0.62)) ** 2 + ((yy - core.H / 2) / (core.H * 0.62)) ** 2)
+        _VIG = (np.clip(d - 0.55, 0, 1)[..., None] ** 1.5 * strength).astype(np.float32)
+    img[..., :3] = img[..., :3] * (1 - _VIG) + np.array(color, np.float32) * _VIG
+    return img
+
+
 # ------------------------------------------------------------------ render
 _TEXT = None
+TEXT_BOX = (1250, 200, 1840, 430)
 
 
 def _text():
+    """Cached end-card layer + its amber halo (static)."""
     global _TEXT
     if _TEXT is None:
-        _TEXT = core.text_layer("おわり", (1540, 310), size=96, font="klee", color="#FFF6E0", spacing=12,
-                                stroke=2, stroke_color="#FFF6E0")
+        tx = core.text_layer("おわり", (1540, 310), size=96, font="klee", color="#FFF6E0", spacing=12,
+                             stroke=2, stroke_color="#FFF6E0")
+        halo = core.blur(tx[..., 3:4], 16)[..., 0]
+        halo = np.clip(halo * 2.0, 0, 1) * 0.62
+        _TEXT = (tx, halo)
     return _TEXT
 
 
@@ -226,7 +278,7 @@ def render(t: float) -> np.ndarray:
     rl = np.zeros_like(img)
     rl[..., :3] = rim[..., None] * np.array(GOLD, np.float32) * 0.85
     img[..., :3] = 1 - (1 - img[..., :3]) * (1 - np.clip(rl[..., :3], 0, 1))
-    core.add_glow(img, rl, 10, 0.8)
+    _screen_glow(img, rl[..., :3], 10, 0.8, ds=3)
 
     # ---------------- Haru
     s2, c2 = core.new_surface()
@@ -238,19 +290,15 @@ def render(t: float) -> np.ndarray:
     pose = _haru_pose(t, tg)
     draw_haru(c2, HARU_X, gy, HARU_S, t=tg, **pose)
     c2.restore()
-    hl = core.surface_rgba(s2)
-    core.over(img, hl)
-
-    # foreground grass
-    s3, c3 = core.new_surface()
-    draw_hilltop_fg(c3, ph, tg, cam=cam, wind=1.0)
-    core.over(img, core.surface_rgba(s3))
+    # foreground grass on the same layer
+    draw_hilltop_fg(c2, ph, tg, cam=cam, wind=1.0)
+    core.over(img, core.surface_rgba(s2))
 
     # ---------------- light motes / petals of light
     ml = core.draw_layer(draw_dust_motes, tg, (0, 0, core.W, core.H), 46, 17, "#FFE2A8", 1.3, 0.55,
                          None, (14.0, -10.0))
     core.over(img, ml)
-    core.add_glow(img, ml, 8, 0.7)
+    _screen_glow(img, ml[..., :3], 8, 0.7, ds=4)
 
     # ---------------- the last star: Kira
     sx, sy = star_pos(t, cam)
@@ -262,23 +310,26 @@ def render(t: float) -> np.ndarray:
         draw_glint(c, sx, sy, size, clamp(0.9 + 0.1 * p), "#FFF1C8", rot=0.08 * math.sin(tg * 0.7) + 0.35 * p),
         draw_glint(c, sx, sy, size * 0.45, 0.6 * clamp(p), "#FFFFFF", rot=math.pi / 4 + 0.2 * p, glow=False),
     ))
-    core.over(img, sl)
-    core.add_glow(img, sl, 22, 1.0 + 0.8 * p, tint=(1.0, 0.92, 0.72))
+    r = max(size, 130 + 40 * p) + 10
+    sbox = (sx - r, sy - r, sx + r, sy + r)
+    _over_box(img, sl, sbox)
+    _screen_glow(img, sl[..., :3], 22, 1.0 + 0.8 * p, tint=(1.0, 0.92, 0.72), box=sbox)
 
     # ---------------- end card
     a = ease_in_out(invl(3.0, 4.6, t))
     if a > 0.002:
-        tx = _text()
-        halo = core.blur(tx[..., 3:4], 16)[..., 0]
-        halo = np.clip(halo * 2.0, 0, 1) * 0.62 * a
+        tx, halo = _text()
+        x0, y0, x1, y1 = TEXT_BOX
+        hsub = halo[y0:y1, x0:x1, None] * a
         amber = np.array([0.86, 0.52, 0.28], np.float32)
-        img[..., :3] = img[..., :3] * (1 - halo[..., None]) + amber * halo[..., None]
-        core.add_glow(img, tx * a, 5, 0.5 * a, tint=(1.0, 0.85, 0.55))
-        core.over(img, tx, opacity=a)
+        sub = img[y0:y1, x0:x1, :3]
+        sub[...] = sub * (1 - hsub) + amber * hsub
+        _screen_glow(img, tx[..., :3] * a, 5, 0.5 * a, tint=(1.0, 0.85, 0.55), box=TEXT_BOX)
+        _over_box(img, tx, TEXT_BOX, a)
 
     # ---------------- post
     _warm_grade(img, t)
-    core.bloom(img, 0.86, 38, 0.38)
-    core.vignette(img, 0.32, color=(0.16, 0.08, 0.10))
+    _bloom(img)
+    _vignette(img)
     core.grain(img, frame, 0.016)
     return core.finish(img)
