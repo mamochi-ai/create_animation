@@ -484,7 +484,7 @@ class _Head:
         ry = R * rad * math.sqrt(max(0.0, 1 - (y / (1.3 * R)) ** 2))
         a = phi + self.ya
         z = math.cos(a)
-        return (ry * math.sin(a), y - self.pitch * 0.32 * R * z), z
+        return (ry * math.sin(a), y - self.pitch * 0.2 * R * z), z
 
     # ---------------------------------------------------- outlines
     def face_pts(self):
@@ -769,9 +769,10 @@ class _Head:
             (x, y), z = self.sp(phi, y0, 1.2)
             if z < 0.05:
                 continue
+            y += 0.16 * R * z * z
             k = min(1.0, z * 2.5)
-            dip = (0.11 if j % 2 else 0.035) * R * k
-            up.append((x, y - 0.035 * R * k))
+            dip = (0.085 if j % 2 else 0.03) * R * k
+            up.append((x, y - 0.025 * R * k))
             lo.append((x, y + dip, True) if j % 2 else (x, y + dip))
         if len(up) < 3:
             return
@@ -780,7 +781,7 @@ class _Head:
         for p in reversed(lo):
             c.line_to(p[0], p[1])
         c.close_path()
-        _sc(c, HAIR_HI, 0.75)
+        _sc(c, HAIR_HI, 0.55)
         c.fill()
 
     def _side_lock(self, ctx, side, behind):
@@ -1440,16 +1441,16 @@ def draw_haru(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
                 return ((s * 40, 26, -52), (s * 1, -0.6, 0.3), "fist", "front")
             return rest
         if k == "raise_lantern":
-            return ((s * 38, 18, -262), (s * 1, 0.1, 0.3), "up", "front")
+            return ((s * 44, 34, -266), (s * 1, 0.2, 0.5), "up", "over")
         if k == "wave":
             if s == hl:
                 wv = math.sin(ph * TAU)
                 return ((s * (66 + 16 * wv), 16, -250 + 5 * abs(wv)), (s * 1, -0.2, 0.6), "wave", "front")
             return rest
         if k == "reach_up":
-            if hl == 0 or s == hl:
-                return ((s * 24, 24, -300), (s * 1, 0, 0.2), "up", "front")
-            return ((s * 46, 12, -70), (s * 1, -0.4, 0.2), "open", "front")
+            if hand in (None, "both") or s == hl:
+                return ((s * 82, 24, -268), (s * 1, 0, 0.2), "up", "front")
+            return rest
         if k == "hands_to_mouth":
             return ((s * 11, 58, -186), (s * 0.9, 0.2, 1), "cheek", "over")
         if k == "run":
@@ -1476,6 +1477,8 @@ def draw_haru(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
             kind, layer = "fist", "front"
         else:
             Wt, pole, kind, layer = tg
+            if kind == "up":
+                S = (S[0] + side * 2, S[1] + 4, S[2] - 16)
             E, W = _ik(S, Wt, L_UPPER, L_FORE, pole)
         arm_info[side] = dict(S=S, E=E, W=W, kind=kind, layer=layer)
 
@@ -2000,7 +2003,7 @@ def draw_haru(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
         cx = (W[0][0] + W[1][0]) / 2
         cy = (W[0][1] + W[1][1]) / 2
         g = _lantern_geom(1.0)
-        hang = (cx, cy - (g["body_cy"]) * lantern_scale - 16)
+        hang = (cx, cy - (g["body_bot"] - 4) * lantern_scale)
         draw_lantern_at(hang, math.sin(t * 1.7) * 0.03, lantern_scale)
         # fingers over the lantern
         for s, Wp in zip((-1, 1), W):
@@ -2024,12 +2027,12 @@ def draw_haru(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
 
 
 # =============================================================== Kira
-def _kira_radius(theta, R, r_in, pts_ang, pts_len, p=1.7, width=None):
+def _kira_radius(theta, R, r_in, pts_ang, pts_len, p=1.7, widths=None):
     """Soft 5-lobed star radius at angle theta (0 = up, clockwise)."""
     r = r_in
-    for a0, L in zip(pts_ang, pts_len):
+    for i, (a0, L) in enumerate(zip(pts_ang, pts_len)):
         d = math.atan2(math.sin(theta - a0), math.cos(theta - a0))
-        W = width or math.radians(37)
+        W = widths[i] if widths else math.radians(37)
         if abs(d) < W:
             r += (L - r_in) * math.cos(d / W * PI / 2) ** p
     return r
@@ -2039,10 +2042,13 @@ def _kira_outline(R, arm_l=0.0, arm_r=0.0, arm_l_len=1.0, arm_r_len=1.0, n=150):
     angs = [0.0, math.radians(72) - arm_r, math.radians(144), math.radians(216), math.radians(288) + arm_l]
     lens = [R, R * 0.93 * arm_r_len, R * 0.9, R * 0.9, R * 0.93 * arm_l_len]
     r_in = R * 0.56
+    base = math.radians(37)
+    # a lifted arm point gets slimmer so it reads as a little limb, not a stretched body
+    widths = [base, base - 0.35 * abs(arm_r), base, base, base - 0.35 * abs(arm_l)]
     pts = []
     for i in range(n):
         th = i * TAU / n
-        r = _kira_radius(th, R, r_in, angs, lens)
+        r = _kira_radius(th, R, r_in, angs, lens, widths=widths)
         pts.append((r * math.sin(th), -r * math.cos(th)))
     return pts
 
@@ -2114,13 +2120,13 @@ def draw_kira(ctx, x, y, scale=1.0, *, expr="neutral", mouth_open=0.0, vowel="x"
     arm_l = arm_r = 0.0
     ll = lr = 1.0
     if pose == "rub_head":
-        arm_l = math.radians(52) + math.radians(9) * math.sin(ph * TAU * 2.2)
-        ll = 0.86
+        arm_l = math.radians(26) + math.radians(6) * math.sin(ph * TAU * 2.2)
+        ll = 0.9
     elif pose == "wave":
-        arm_r = math.radians(40) + math.radians(22) * math.sin(ph * TAU * 1.6)
-        lr = 1.04
+        arm_r = math.radians(24) + math.radians(12) * math.sin(ph * TAU * 1.6)
+        lr = 0.97
     elif pose == "cheer":
-        arm_l = arm_r = math.radians(40) + math.radians(6) * math.sin(ph * TAU * 2)
+        arm_l = arm_r = math.radians(24) + math.radians(5) * math.sin(ph * TAU * 2)
     elif pose == "droop":
         arm_l = arm_r = -math.radians(22)
     alpha_eff = alpha * (0.55 + 0.45 * smoothstep(0.0, 0.6, g))

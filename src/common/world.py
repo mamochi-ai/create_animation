@@ -1157,7 +1157,7 @@ def _draw_kusu_canopy(L, x, y, sc, geom, which=None):
 PADX = 260
 TOWN_LAYERS = ("far", "hill", "mid", "near")
 TOWN_PAR = {"far": 0.82, "hill": 0.9, "mid": 1.0, "near": 1.12}
-_TOWN_BOX = {"far": (520, 1200), "hill": (30, 1200), "mid": (560, 1200), "near": (420, 1200)}
+_TOWN_BOX = {"far": (520, 1200), "hill": (-160, 1200), "mid": (560, 1200), "near": (420, 1200)}
 # landmark positions (screen space at cam 0; hill layer)
 TOWN_TREE = (1745.0, 356.0)          # trunk base of the camphor tree
 TOWN_TREE_TOP = (1735.0, 60.0)       # approx. top of canopy
@@ -1425,17 +1425,17 @@ def _gen_hill(L, rng, wins, ex):
 
     # forest clumps covering the hillside (skip the summit clearing & the path)
     pts = []
-    for i in range(420):
+    for i in range(1100):
         x = rng.uniform(860, W + PADX)
         top = _hill_top_y(x)
         if 1460 < x < 2010 and rng.random() < 0.85:
             continue
-        y = top + rng.uniform(4, 60) + rng.exponential(90)
+        y = top + rng.uniform(2, 40) + rng.exponential(140)
         pts.append((y, x))
     pts.sort()
     for y, x in pts:
         d, u = step_dist(x, y)
-        r = rng.uniform(12, 26) * (1 + (y - 350) / 900)
+        r = rng.uniform(14, 30) * (1 + (y - 350) / 700)
         if d < r + 10:
             continue
         subs = [(0.0, 0.0, r * 0.72)] + [(math.cos(a) * r * 0.6, math.sin(a) * r * 0.5, r * rng.uniform(0.3, 0.42))
@@ -1473,7 +1473,7 @@ def _gen_hill(L, rng, wins, ex):
     # the camphor tree
     tx, ty = TOWN_TREE
     geom = _kusu_geom(5)
-    sc = 0.5
+    sc = 0.46
     _draw_kusu_trunk(L, tx, ty, sc, geom, rng)
     _draw_kusu_canopy(L, tx, ty, sc, geom)
     # bushes around the summit
@@ -1570,11 +1570,12 @@ def _gen_near(L, rng, wins, ex):
     ctx = L.ctx
     ex["lamps"] = []
     # big foreground roofs
-    specs = [(-190, 1000, 560, 70, "hip2"), (330, 1050, 300, 60, "hip"), (1260, 1030, 380, 80, "gable"),
+    specs = [(-190, 1000, 560, 70, "hip2"), (330, 1050, 300, 60, "hip"), (620, 1085, 330, 50, "hip"),
+             (930, 1075, 300, 56, "gable"), (1260, 1030, 380, 80, "gable"),
              (1580, 990, 620, 64, "hip")]
     for x, b, w, hw, kind in specs:
         _house(L, x, b, w, hw, rng, 3.6, wins, kind=kind, tiles=True, p_lit=0.55, style=1, ext=200)
-    for x, r in ((700, 60), (820, 48), (1150, 52)):
+    for x, r in ((600, 50), (1210, 46)):
         _bush(L, x, 1080, r, rng, 3.0)
     # concrete block wall along the bottom
     ctx.rectangle(-PADX, 1050, W + 2 * PADX, 200)
@@ -1625,7 +1626,7 @@ def _town_cols(layer, C, oy):
         return dict(a=linear_gradient(0, 700 + oy, 0, 960 + oy, [(0, base), (0.55, base), (1, mix(base, fog, 0.3 + 0.3 * mist))]),
                     r=C["roof"], g=mix(C["roof"], rim, 0.4), b=_darken(base, 0.45), rim=(rim, 0.75))
     base = C["near"]
-    return dict(a=base, r=C["roof_near"], g=mix(C["roof_near"], rim, 0.33), b=_darken(base, 0.5), rim=(rim, 0.6))
+    return dict(a=base, r=C["roof_near"], g=mix(C["roof_near"], rim, 0.33), b=_darken(base, 0.5), rim=(rim, 0.5))
 
 
 def _draw_windows(ctx, wins, C, t, ox, oy, big):
