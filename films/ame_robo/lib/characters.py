@@ -318,7 +318,7 @@ M_R = 56.0                 # head radius
 M_HEAD_V = -380.0          # head centre (standing), body space
 M_HIP_V = -182.0
 M_SHOULDER = (31.0, -303.0)
-M_UPPER, M_FORE = 60.0, 56.0
+M_UPPER, M_FORE = 62.0, 58.0
 M_THIGH, M_SHIN = 84.0, 82.0
 M_ANKLE_V = -16.0
 
@@ -1336,7 +1336,7 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
               blink=0.0, look=(0.0, 0.0), head_tilt=0.0, head_turn=0.0, head_pitch=0.0, body_lean=0.0,
               bounce=0.0, crouch=0.0, tiptoe=0.0, wet=0.0, wind=0.0, wind_dir=None, t=0.0, arms="rest",
               arm_phase=None, hand=None, hand_l=None, hand_r=None, randoseru="back", hold_target=None,
-              hold_offset=(0.0, 0.0), hold_tilt=0.0, crop=None, rim=RIM, light="left", breathe=1.0,
+              hold_offset=(0.0, 0.0), hold_tilt=0.0, hold_flap=0.0, crop=None, rim=RIM, light="left", breathe=1.0,
               eye_open=None, blush=None, brow_tilt=None, smile=None, alpha=1.0):
     """Draw Mina.  (x, y) = ground point between her feet; scale 1 -> ~480 px tall (with hat).
 
@@ -1479,9 +1479,16 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
 
     # ------------------------------------------------ upper body frame
     hip_pt = P.p(0, 0, hip_v)
+    auto_lean = 0.0
+    if arms == "hold_randoseru_overhead":
+        if hold_target is not None:
+            tx_, ty_ = to_local(*hold_target)
+        else:
+            tx_ = 20.0 + hold_offset[0]
+        auto_lean = clamp((tx_ - hip_pt[0]) / 650.0, -0.22, 0.22)
     ctx.save()
     ctx.translate(*hip_pt)
-    ctx.rotate(body_lean + 0.12 * crouch * (1 if abs(sy) > 0.3 else 0))
+    ctx.rotate(body_lean + auto_lean + 0.12 * crouch * (1 if abs(sy) > 0.3 else 0))
     ctx.translate(-hip_pt[0], -hip_pt[1] + (hip_v - M_HIP_V))
     # (upper body is drawn at standing heights; frame translated down by crouch)
 
@@ -1497,21 +1504,21 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
         one = -1  # near hand in 3/4 and side views
     hold = None
     if arms == "hold_randoseru_overhead":
-        base = (40.0, -468.0)  # default: above her head, a bit forward (screen x, y in body frame)
+        base = (14.0, -492.0)  # default: above her hat, a bit forward (screen x, y in body frame)
         if hold_target is not None:
             lx, ly = to_local(*hold_target)
             base = (lx, ly - (hip_v - M_HIP_V))
         base = (base[0] + hold_offset[0], base[1] + hold_offset[1])
         # clamp to reach: hands 30 px below box centre, each hand within arm reach
-        reach = (M_UPPER + M_FORE) * 0.97
+        reach = (M_UPPER + M_FORE) * 1.25  # chibi arms may stretch up to 25 % when holding overhead
         sh_c = (0.0, M_SHOULDER[1])
-        hc = (base[0], base[1] + 30)
+        hc = (base[0], base[1] + 28)
         dvec = _sub(hc, sh_c)
         dl = _len(dvec)
-        if dl > reach + 10:
-            hc = _add(sh_c, _norm(dvec), reach + 10)
-        hold = dict(box=(hc[0], hc[1] - 30), hands=hc)
-        anchors["hold_clamped"] = _len(_sub(hc, (base[0], base[1] + 30))) > 1.0
+        if dl > reach:
+            hc = _add(sh_c, _norm(dvec), reach)
+        hold = dict(box=(hc[0], hc[1] - 28), hands=hc)
+        anchors["hold_clamped"] = _len(_sub(hc, (base[0], base[1] + 28))) > 1.0
 
     def target(side):
         s = side
@@ -1525,22 +1532,23 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
             return ((s * 9, 46, -338), (s * 0.9, 0.1, 1), "cheek", "over")
         if k == "point":
             if s == one:
-                return ((s * 52, 96, -318), (s * 0.4, 0, 1), "point", "front")
+                dl_, df_ = P.c, P.s
+                return ((s * 31 + dl_ * 112, df_ * 112 + 10, -296), (0, -0.3, 1), "point", "front")
             return rest
         if k == "wave":
             if s == one:
                 wv = math.sin(arm_phase * TAU)
-                return ((s * (62 + 14 * wv), 14, -402 + 5 * abs(wv)), (s * 1, -0.2, 0.6), "wave", "front")
+                return ((s * (78 + 12 * wv), 14, -396 + 5 * abs(wv)), (s * 1, -0.2, 0.6), "wave", "front")
             return rest
         if k == "arms_up":
             wv = math.sin(arm_phase * TAU) * 6
-            return ((s * 60, 14, -426 + wv * s), (s * 1, 0, 0.3), "wave", "front")
+            return ((s * 92, 16, -436 + wv * s), (s * 1, 0, 0.3), "wave", "front")
         if k == "shrug":
             return ((s * 64, 22, -262), (s * 1, -0.6, 0.6), "palm_up", "front")
         if k == "hold_randoseru_overhead":
             hx, hy = hold["hands"]
             # hand spread along the screen-x direction in body space
-            off = s * 26 * (1 if P.c >= 0 else -1)
+            off = s * 40 * (1 if P.c >= 0 else -1)
             lx = hx * P.c + off * P.c
             fx = hx * P.s + off * P.s * 0.4 + 10
             if abs(P.s) > 0.6:  # side views: hands spread in depth so both are visible
@@ -1558,7 +1566,10 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
         else:
             tg = target(side)
         Wt, pole, kind, layer = tg
-        E, Wr = _ik(list(S), list(Wt), M_UPPER, M_FORE, pole)
+        dist = math.sqrt(sum((Wt[i] - S[i]) ** 2 for i in range(3)))
+        maxk = 1.25 if (arms in ("hold_randoseru_overhead", "arms_up", "wave") and ov is None) else 1.0
+        k_st = clamp(dist / ((M_UPPER + M_FORE) * 0.98), 1.0, maxk)
+        E, Wr = _ik(list(S), list(Wt), M_UPPER * k_st, M_FORE * k_st, pole)
         zs = P.z(S[0], S[1])
         zw = P.z(Wr[0], Wr[1])
         if layer != "over":
@@ -1566,13 +1577,19 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
                 layer = "front"
             elif zs < -6 and not (kind in ("clasp", "grip") and zw > 0):
                 layer = "back"
+            elif kind == "grip" and ov is None:
+                layer = "under_head"
             else:
                 layer = "front"
         arm_info[side] = dict(S=S, E=E, W=Wr, kind=kind, layer=layer, z=zs)
 
-    def draw_arm(side):
+    def draw_arm(side, hand_only=False):
         a = arm_info[side]
         S2, E2, W2 = P.p3(a["S"]), P.p3(a["E"]), P.p3(a["W"])
+        if hand_only:
+            d = _norm(_sub(W2, E2)) if _len(_sub(W2, E2)) > 1 else (0, 1)
+            _m_hand(ctx, W2, _norm((d[0] * 0.5, -1.0)), 11.0, "fist", side, lw, M_SKIN)
+            return
         if _len(_sub(E2, S2)) < 6:
             E2 = (E2[0] + side * 5, E2[1] + 4)
         far = a["z"] < -6 and not back
@@ -1625,7 +1642,7 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
 
     # ------------------------------------------------ randoseru on back
     box_axes = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
-    box_center = (0.0, -42.0, -262.0 + breath * 0.6)
+    box_center = (0.0, -42.0, -255.0 + breath * 0.6)
     box_half = (47.0, 22.0, 56.0)
 
     def draw_box_back():
@@ -1782,17 +1799,17 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
         # randoseru shoulder straps (red) over the shoulders, down to the armpits
         if randoseru == "back":
             for side in (-1, 1):
-                pts3 = [(-312.5, side * 0.62), (-307, side * 0.95), (-288, side * 1.18), (-268, side * 1.32)]
-                pts = [surf(_M_TORSO, v_, ph_, 1.06) for v_, ph_ in pts3]
+                pts3 = [(-311, side * 0.7), (-298, side * 0.86), (-280, side * 0.98), (-262, side * 1.12)]
+                pts = [surf(_M_TORSO, v_, ph_, 1.07) for v_, ph_ in pts3]
                 if max(p[2] for p in pts) < -0.1:
                     continue
-                c0 = P.p(side * 28, -14, -322)
+                c0 = P.p(side * 25, -12, -318)
                 pts2 = [c0] + [(p[0], p[1]) for p in pts]
                 rc = _wet(M_RAN, wet, 0.5)
                 _sc(ctx, M_RAN_LINE)
-                _taper(ctx, pts2, 11.5, 10.5, 12.5)
+                _taper(ctx, pts2, 9.5, 8.5, 10.0)
                 _sc(ctx, rc)
-                _taper(ctx, pts2, 8.5, 7.5, 9.5)
+                _taper(ctx, pts2, 6.8, 6.0, 7.4)
                 _sc(ctx, M_RAN_HI, 0.5)
                 _taper(ctx, [_add(p, (-1.5 * ls, -1)) for p in pts2[:3]], 1.2, 0.8, 2.0)
                 # buckle
@@ -1863,7 +1880,10 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
             draw_box_back()
     else:
         for side in sorted(arm_info, key=lambda s: arm_info[s]["z"]):
-            if arm_info[side]["layer"] == "front" and arm_info[side]["kind"] not in ("grip",):
+            if arm_info[side]["layer"] == "front":
+                draw_arm(side)
+        for side in sorted(arm_info, key=lambda s: arm_info[s]["z"]):
+            if arm_info[side]["layer"] == "under_head":
                 draw_arm(side)
         draw_head()
         for side in sorted(arm_info, key=lambda s: arm_info[s]["z"]):
@@ -1880,7 +1900,7 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
         # rotate in the screen plane by hold_tilt: long axis gets a v component
         e_long = (ex[0] * ca, ex[1] * ca, sa)
         e_up = (-ex[0] * sa, -ex[1] * sa, ca)  # +v = down
-        Pb = _P(ya, tilt=-0.22)
+        Pb = _P(ya, tilt=-0.34)
         center3 = (bx * P.c, bx * P.s, by)
         # box local axes: width(l) -> depth direction, depth(f, +toward her back = 'inner' face) -> down,
         # height(v) -> long axis
@@ -1900,16 +1920,42 @@ def draw_mina(ctx, x, y, scale=1.0, *, view="front", yaw=None, expr="neutral", m
             ctx.move_to(*loop[0])
             ctx.curve_to(*loop[1], *loop[2], *loop[3])
             _stroke(ctx, _wet(M_RAN_SH, wet, 0.5), 6.0)
-        r = _draw_randoseru(ctx, Pb, center3, axes, (49.0, 22.0, 58.0), lw, wet, t, rim, ls)
+        r = _draw_randoseru(ctx, Pb, center3, axes, (47.0, 22.0, 56.0), lw, wet, t, rim, ls)
+        # the lid (kabuse) swings open from the far end and extends the roof
+        fo = clamp(hold_flap)
+        flap_pts = []
+        if fo > 0.01:
+            ang = (PI + 1.25) * ease_out_back(fo, 1.2)
+            hinge = [center3[i] + ef[i] * 47 - e_up[i] * 22 for i in range(3)]
+            dir_ = [ef[i] * -math.cos(ang) - e_up[i] * math.sin(ang) for i in range(3)]
+            corners = []
+            for wsg, ln in ((-1, 0), (1, 0), (1, 1), (-1, 1)):
+                corners.append(Pb.p3([hinge[i] + e_long[i] * wsg * 53 + dir_[i] * 84 * ln for i in range(3)]))
+            ctx.new_path()
+            _rpoly(ctx, [corners[0], corners[1], _l2(corners[2], corners[1], 0.12), _l2(corners[2], corners[3], 0.2),
+                         _l2(corners[3], corners[2], 0.2), _l2(corners[3], corners[0], 0.12)], 6)
+            under = math.sin(ang) * 1.0
+            _sc(ctx, _wet(M_RAN_HI if ang > PI / 2 else M_RAN, wet, 0.5) if False else _wet(mix(M_RAN, M_RAN_HI, 0.15), wet, 0.5))
+            ctx.fill_preserve()
+            _stroke(ctx, M_RAN_LINE, lw)
+            tipm = _l2(corners[2], corners[3], 0.5)
+            ctx.save()
+            ctx.translate(*tipm)
+            _rrect(ctx, -6, -1, 12, 9, 2.5)
+            ctx.restore()
+            _sc(ctx, M_GOLD)
+            ctx.fill_preserve()
+            _stroke(ctx, M_GOLD_SH, lw * 0.6)
+            flap_pts = corners
         anchors["randoseru_center"] = anchor(*r["center"])
-        xs = [p[0] for p in r["hull"]]
+        xs = [p[0] for p in r["hull"]] + [p[0] for p in flap_pts]
         ys = [p[1] for p in r["hull"]]
         anchors["randoseru_top"] = anchor(r["center"][0], min(ys))
         x0, x1 = anchor(min(xs), min(ys))[0], anchor(max(xs), min(ys))[0]
         anchors["randoseru_span"] = (min(x0, x1), max(x0, x1))
         for side in sorted(arm_info, key=lambda s: arm_info[s]["z"]):
             if arm_info[side]["kind"] == "grip":
-                draw_arm(side)
+                draw_arm(side, hand_only=True)
         drop_local.extend([anchor(r["center"][0] + dx, min(ys) + 2) for dx in (-40, -10, 25, 50)])
 
     # ------------------------------------------------ anchors
@@ -1945,9 +1991,9 @@ RB_ANT_L = 40.0          # antenna lateral position on the head top
 RB_HATCH_L = 6.0       # mini-umbrella hatch lateral position
 RB_TREAD = dict(l=50.0, hw=17.0, half=50.0, h=48.0, r=24.0)
 CAN_RADIUS = 492.0       # 2.4 x Robo height / 2
-CAN_DROP = 170.0         # apex -> rim drop
-CAN_K = 0.14             # rim ellipse squash (seen slightly from below)
-CAN_APEX_Y = -770.0      # default apex height (local px)
+CAN_DROP = 230.0         # apex -> rim drop
+CAN_K = 0.11             # rim ellipse squash (seen slightly from below)
+CAN_APEX_Y = -765.0      # default apex height (local px)
 CAN_OFFSET = (470.0, 0.0)
 
 ROBO_FACES = ("dots", "happy", "blink", "question", "loading", "glitch", "warm", "heart", "surprised", "scan")
@@ -2264,7 +2310,7 @@ def _draw_canopy(ctx, base, p, offset, tilt, t, wet, lw, mirror_ls, glint=True):
     tang = _norm(_sub(curve[-1], curve[-2])) if ext > 0.01 else (0.0, -1.0)
     # pole: 3 telescoping sections
     if ext > 0.005:
-        segs = [(0.0, 0.42, 9.5, R_METAL_SH), (0.36, 0.74, 7.5, R_METAL), (0.68, 1.0, 5.6, R_METAL_HI)]
+        segs = [(0.0, 0.42, 12.0, R_METAL_SH), (0.36, 0.74, 9.0, R_METAL), (0.68, 1.0, 6.5, R_METAL_HI)]
         for a, b, wdt, col in segs:
             i0, i1 = int(a * n), max(int(a * n) + 1, int(b * n))
             pts = curve[i0:i1 + 1]
@@ -2313,10 +2359,11 @@ def _draw_canopy(ctx, base, p, offset, tilt, t, wet, lw, mirror_ls, glint=True):
         lam = lerp(0.3, 1.0, ease_out(clamp(st * 1.2)))
         Lr = math.hypot(R, Hh) * lam
         dirv = (math.sin(al) * math.cos(th), math.cos(al), math.sin(al) * math.sin(th))
-        bow = 0.16 * Lr * math.sin(al) * e
+        pw = lerp(1.0, 1.7, e)
 
-        def rib_pt(u, dirv=dirv, Lr=Lr, bow=bow):
-            X, Y, Z = (dirv[0] * Lr * u, dirv[1] * Lr * u - bow * 4 * u * (1 - u), dirv[2] * Lr * u)
+        def rib_pt(u, dirv=dirv, Lr=Lr, pw=pw):
+            # dome profile: flat crown, steeper toward the rim (no dip at the apex)
+            X, Y, Z = (dirv[0] * Lr * u, dirv[1] * Lr * (u ** pw), dirv[2] * Lr * u)
             return to2(X, Y, Z)
 
         ribs.append((th, rib_pt, st))
@@ -2351,9 +2398,6 @@ def _draw_canopy(ctx, base, p, offset, tilt, t, wet, lw, mirror_ls, glint=True):
                 _spline(ctx, pts, False)
                 _stroke(ctx, R_METAL_LINE, 2.4, 0.8)
         # shade of underside interior near apex
-        ctx.arc(apex[0], apex[1], 40 * rs, 0, TAU)
-        _sc(ctx, CAN_LINE, 0.25)
-        ctx.fill()
         # ---- exterior panels (front half), back to front
         order = sorted(range(8), key=lambda i: math.sin(ribs[i][0] + PI / 8))
         for i in order:
@@ -2795,6 +2839,7 @@ def draw_robo(ctx, x, y, scale=1.0, *, view="front", yaw=None, face="dots", scre
                         c_.save()
                         c_.translate(ctr[0], ctr[1])
                         c_.transform(cairo.Matrix(c, -0.1 * s, 0, 1, 0, 0))
+                        c_.scale(mirror, 1)
                         _sc(c_, R_STENCIL, 0.88)
                         c_.new_path()
                         c_.move_to(-17, -28)
@@ -2832,7 +2877,7 @@ def draw_robo(ctx, x, y, scale=1.0, *, view="front", yaw=None, face="dots", scre
                 sp = surf(-150, -PI / 2 * 1.0)
                 c_.save()
                 c_.translate(sp[0] + 0.0, sp[1])
-                c_.scale(0.35 + 0.65 * s, 1)
+                c_.scale((0.35 + 0.65 * s) * mirror, 1)
                 _sc(c_, R_STENCIL, 0.75)
                 c_.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
                 c_.set_font_size(15)
@@ -3364,3 +3409,276 @@ def robo_glow_layer(x, y, scale=1.0, **pose):
     surf, c = new_surface()
     draw_robo(c, x, y, scale, glow_only=True, **pose)
     return surface_rgba(surf)
+
+
+# =============================================================== kitten (calico)
+def draw_kitten(ctx, x, y, scale=1.0, *, pose="sit", expr="neutral", blink=0.0, t=0.0, wet=0.0, facing=1,
+                look=(0.0, 0.0), rim=RIM, alpha=1.0):
+    """Tiny calico kitten.  (x, y) = ground point under its body; scale 1 -> ~70 px tall (sitting).
+
+    pose : 'sit' | 'curl' (sleeping loaf) | 'nuzzle' (rubbing its head forward, uses t) | 'stand'
+    expr : 'neutral' | 'happy' (^ ^) | 'mew' (open mouth)   blink 0..1, look (dx, dy)
+    t (s) tail sway / breathing, wet 0..1 (darker spiky fur, droplets), facing +1 right / -1 left.
+    Returns anchors: head, nose, mouth, tail_tip, top, feet, scale.
+    """
+    anchor, _ = _anchor_fn(ctx)
+    lw = line_weight(scale, 2.1)
+    wet = clamp(wet)
+    WH = _wet(K_WHITE, wet, 0.45)
+    WH_SH = _wet(K_WHITE_SH, wet, 0.45)
+    OR = _wet(K_ORANGE, wet, 0.45)
+    BK = _wet(K_BLACK, wet, 0.3)
+    ls = 1 if facing > 0 else -1
+    if alpha < 1.0:
+        ctx.push_group()
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(scale * (1 if facing > 0 else -1), scale)
+    ctx.set_line_join(cairo.LINE_JOIN_ROUND)
+    ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+    anchors = {"scale": scale}
+    breath = math.sin(t * TAU / 1.6) * 0.6
+    sway = math.sin(t * 2.4)
+    spiky = wet > 0.3
+
+    def fur(pts):
+        """Add little fur tufts (sharp points) between outline points when wet/fluffy."""
+        if not spiky:
+            return pts
+        out = []
+        n = len(pts)
+        for i in range(n):
+            a, b = pts[i], pts[(i + 1) % n]
+            out.append(a)
+            m = _l2(a, b, 0.5)
+            ctr = (sum(p[0] for p in pts) / n, sum(p[1] for p in pts) / n)
+            d = _norm(_sub(m, ctr))
+            out.append((m[0] + d[0] * 1.6, m[1] + d[1] * 1.6, True))
+        return out
+
+    def patches(c, items):
+        for (px, py, rx, ry, rot, col) in items:
+            _ell(c, px, py, rx, ry, rot)
+            _sc(c, col)
+            c.fill()
+
+    def tail(pts, w0=6.5, w1=3.2):
+        # orange tail with black tip
+        _sc(ctx, K_LINE)
+        _taper(ctx, pts, w0 + lw * 1.6, w1 + lw * 1.6)
+        _sc(ctx, OR)
+        _taper(ctx, pts, w0, w1)
+        tip = pts[-2:]
+        _sc(ctx, BK)
+        _taper(ctx, [_l2(tip[0], tip[1], 0.35), tip[1]], w1 * 1.2, w1)
+        anchors["tail_tip"] = anchor(*pts[-1])
+
+    def head(hx, hy, rot=0.0, closed=False):
+        ctx.save()
+        ctx.translate(hx, hy)
+        ctx.rotate(rot)
+        droop = 2.5 * wet
+        # ears
+        for sd in (-1, 1):
+            ear = [(sd * 5, -10), (sd * 13 + sd * droop * 0.8, -21 + droop, True), (sd * 16, -6)]
+            col = OR if sd < 0 else BK
+            _cel(ctx, lambda c, e=ear: _spline(c, e, True, 0.6), col, None, None, K_LINE, lw)
+            inner = [(sd * 7, -10), (sd * 12.5 + sd * droop * 0.8, -18 + droop, True), (sd * 14, -8)]
+            ctx.new_path()
+            _spline(ctx, inner, True, 0.5)
+            _sc(ctx, K_PINK, 0.9)
+            ctx.fill()
+        hp = fur([(0, -13), (10, -11.5), (16, -5), (18.5, 2, True), (14, 6), (17, 8.5, True), (9, 11.5), (0, 12.5),
+                  (-9, 11.5), (-17, 8.5, True), (-14, 6), (-18.5, 2, True), (-16, -5), (-10, -11.5)])
+
+        def hx_extra(c):
+            patches(c, [(-9, -9, 9, 7, 0.4, OR), (10, -10, 7, 5, -0.4, BK)])
+            _ell(c, 0, 6, 9, 6)
+            _sc(c, WH)
+            c.fill()
+
+        _cel(ctx, lambda c: _spline(c, hp, True, 0.9), WH, WH_SH, rim, K_LINE, lw, soff=(-3 * ls, -2.5),
+             roff=(-1.2, 0.3), shade_a=0.8, rim_a=0.6, extra=hx_extra)
+        # eyes
+        lx, ly = look
+        for sd in (-1, 1):
+            ex, ey = sd * 6.5, 0.5
+            if closed or expr == "happy" or blink > 0.6:
+                _sc(ctx, K_EYE)
+                if expr == "happy" and not closed:
+                    _taper(ctx, [(ex - 3.2, ey + 1), (ex, ey - 2), (ex + 3.2, ey + 1)], 1.3, 1.3, 1.8)
+                else:
+                    _taper(ctx, [(ex - 3.2, ey), (ex, ey + 2), (ex + 3.2, ey)], 1.3, 1.3, 1.8)
+            else:
+                _ell(ctx, ex + lx * 1.2, ey + ly * 1.0, 3.6, 4.0 * (1 - blink))
+                _sc(ctx, K_EYE)
+                ctx.fill()
+                ctx.arc(ex + lx * 1.2 - 1.2, ey - 1.5, 1.35, 0, TAU)
+                ctx.set_source_rgba(1, 1, 1, 0.95)
+                ctx.fill()
+                ctx.arc(ex + lx * 1.2 + 1.3, ey + 1.6, 0.6, 0, TAU)
+                ctx.fill()
+        # blush
+        for sd in (-1, 1):
+            _ell(ctx, sd * 10, 6.5, 3.2, 1.8)
+            _sc(ctx, K_PINK, 0.55)
+            ctx.fill()
+        # nose + mouth
+        ctx.move_to(-1.8, 4.2)
+        ctx.line_to(1.8, 4.2)
+        ctx.line_to(0, 6.0)
+        ctx.close_path()
+        _sc(ctx, "#F27C8C")
+        ctx.fill()
+        if expr == "mew":
+            ctx.new_path()
+            ctx.move_to(-2.8, 7.2)
+            ctx.curve_to(-2.4, 11.5, 2.4, 11.5, 2.8, 7.2)
+            ctx.curve_to(1, 8, -1, 8, -2.8, 7.2)
+            _sc(ctx, "#7A2630")
+            ctx.fill_preserve()
+            _stroke(ctx, K_LINE, 0.8)
+            _ell(ctx, 0, 9.6, 1.6, 1.0)
+            _sc(ctx, "#F08592")
+            ctx.fill()
+        else:
+            _sc(ctx, K_LINE)
+            ctx.move_to(0, 6.0)
+            ctx.curve_to(0, 8, -2.6, 8.4, -3.2, 7)
+            ctx.move_to(0, 6.0)
+            ctx.curve_to(0, 8, 2.6, 8.4, 3.2, 7)
+            ctx.set_line_width(0.9)
+            ctx.stroke()
+        # whiskers
+        _sc(ctx, K_LINE, 0.55)
+        for sd in (-1, 1):
+            for k in (-1, 0, 1):
+                ctx.move_to(sd * 11, 5 + k * 1.6)
+                ctx.line_to(sd * 21, 3.5 + k * 3.0)
+        ctx.set_line_width(0.6)
+        ctx.stroke()
+        if wet > 0.2:
+            draw_droplet(ctx, -12, -15, 1.6, wet)
+            draw_droplet(ctx, 9, 13, 1.4, wet)
+        anchors["head"] = anchor(0, 0)
+        anchors["nose"] = anchor(0, 4.5)
+        anchors["mouth"] = anchor(0, 7.5)
+        anchors["top"] = anchor(0, -20)
+        ctx.restore()
+
+    def leg(x0, y0, x1, w=4.6):
+        pts = [(x0, y0), (x1, -3)]
+        _cel(ctx, lambda c: _limb(c, pts, [w, w * 0.9]), WH, WH_SH, None, K_LINE, lw * 0.9, soff=(-1.5, 0))
+        _ell(ctx, x1 + 1.0, -2.4, w * 1.15, 2.6)
+        _sc(ctx, WH)
+        ctx.fill_preserve()
+        _stroke(ctx, K_LINE, lw * 0.9)
+
+    if pose == "sit":
+        tail([(-15, -4), (-4, 1.5), (10, 0.5), (18, -2 - 3 * sway), (21 + sway, -7 - 4 * sway)])
+        body = fur([(-17, -1), (-21, -13), (-17, -28 - breath), (-7, -38 - breath), (6, -39 - breath),
+                    (13, -29), (15, -13), (13, -1)])
+
+        def b_extra(c):
+            patches(c, [(-13, -24, 9, 12, 0.3, OR), (-14, -6, 7, 6, 0.1, BK), (-4, -34, 6, 4, 0.2, OR)])
+
+        _cel(ctx, lambda c: _spline(c, body), WH, WH_SH, rim, K_LINE, lw, soff=(-4 * ls, -2), roff=(-1.5, 0.3),
+             shade_a=0.7, rim_a=0.6, extra=b_extra)
+        leg(2, -24, 2, 4.4)
+        leg(10, -24, 11, 4.4)
+        head(4, -52 - breath, 0.06 * math.sin(t * 0.9))
+    elif pose == "stand":
+        tail([(-20, -26), (-27, -36), (-26 - 2 * sway, -50), (-21 - 4 * sway, -56)], 5.5, 3.0)
+        for lx in (-15, -8):
+            leg(lx, -22, lx - 1)
+        body = fur([(-24, -24), (-17, -35 - breath), (2, -36 - breath), (17, -31), (21, -22), (14, -15),
+                    (-5, -14), (-20, -16)])
+
+        def b_extra(c):
+            patches(c, [(-11, -30, 11, 6, 0.0, OR), (6, -32, 6, 4, 0.2, BK)])
+
+        _cel(ctx, lambda c: _spline(c, body), WH, WH_SH, rim, K_LINE, lw, soff=(-4 * ls, -2), roff=(-1.5, 0.3),
+             shade_a=0.7, rim_a=0.6, extra=b_extra)
+        for lx in (9, 15):
+            leg(lx, -20, lx + 1)
+        head(23, -42, 0.05 * math.sin(t))
+    elif pose == "curl":
+        tail([(-20, -6), (-14, 0.5), (4, 1.0), (18, -1), (24, -5 - sway)], 6.0, 3.0)
+        body = fur([(-24, -5), (-20, -17 - breath), (-6, -23 - breath), (10, -22 - breath), (22, -14), (22, -2),
+                    (-20, -1)])
+
+        def b_extra(c):
+            patches(c, [(-8, -17, 12, 6, 0.1, OR), (8, -18, 6, 4, 0.0, BK)])
+
+        _cel(ctx, lambda c: _spline(c, body), WH, WH_SH, rim, K_LINE, lw, soff=(-4 * ls, -2), roff=(-1.5, 0.3),
+             shade_a=0.7, rim_a=0.6, extra=b_extra)
+        head(17, -13, 0.35, closed=True)
+        # zzz-less: little breathing tuft
+    elif pose == "nuzzle":
+        rub = math.sin(t * 5.5)
+        tail([(-20, -26), (-24, -38), (-22 + 2 * sway, -52), (-17 + 3 * sway, -58)], 5.5, 3.0)
+        for lx in (-15, -8):
+            leg(lx, -22, lx - 1)
+        body = fur([(-24, -24), (-17, -35), (2, -35), (15, -28), (19, -20), (12, -15), (-5, -14), (-20, -16)])
+
+        def b_extra(c):
+            patches(c, [(-11, -30, 11, 6, 0.0, OR), (6, -31, 6, 4, 0.2, BK)])
+
+        _cel(ctx, lambda c: _spline(c, body), WH, WH_SH, rim, K_LINE, lw, soff=(-4 * ls, -2), roff=(-1.5, 0.3),
+             shade_a=0.7, rim_a=0.6, extra=b_extra)
+        for lx in (9, 14):
+            leg(lx, -20, lx + 1)
+        head(24 + rub * 1.5, -27 + abs(rub) * 1.0, 0.45 + 0.12 * rub, closed=True)
+        # little hearts of affection
+        if rub > 0.3:
+            draw_sparkle(ctx, 30, -46, 3.5 * rub, 0.8, 0.3, "#FFD0DA")
+    anchors["feet"] = anchor(0, 0)
+    if wet > 0.2:
+        draw_droplet(ctx, -10, -18, 1.6, wet)
+        draw_droplet(ctx, 6, -8, 1.5, wet)
+    ctx.restore()
+    if alpha < 1.0:
+        ctx.pop_group_to_source()
+        ctx.paint_with_alpha(alpha)
+    return anchors
+
+
+# =============================================================== rain interaction helpers
+def draw_drops_on(ctx, points, t, scale=1.0, seed=0, amount=1.0):
+    """Water beading on surfaces: at each point a drop grows, slides a little and falls off.
+    points: caller-space (x, y) list, e.g. anchors['drop_points']."""
+    if amount <= 0:
+        return
+    for i, p in enumerate(points):
+        per = 0.9 + 0.8 * _hash(i, seed, 1)
+        u = ((t + _hash(i, seed, 2) * per) % per) / per
+        r = (1.4 + 2.2 * smoothstep(0.0, 0.6, u)) * scale
+        if u < 0.65:
+            draw_droplet(ctx, p[0], p[1] + r * 0.6 + 4 * scale * u, r, amount)
+        else:
+            k = (u - 0.65) / 0.35
+            dy = 4 * scale * 0.65 + 90 * scale * k * k
+            draw_droplet(ctx, p[0], p[1] + dy, r * 0.8, amount * (1 - k), 1.0 + 0.8 * k)
+
+
+def draw_rim_drips(ctx, rim_points, t, scale=1.0, seed=0, amount=1.0, fall=420.0):
+    """Streams of drops falling from an umbrella rim (canopy anchors['canopy_rim_points'])."""
+    if amount <= 0:
+        return
+    ctx.save()
+    ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+    for i, p in enumerate(rim_points):
+        for k in range(3):
+            per = 0.55 + 0.25 * _hash(i, k, seed)
+            u = ((t + _hash(i, k, seed, 4)) % per) / per
+            dy = fall * scale * u * u
+            ln = 26 * scale * (0.3 + u)
+            a = amount * (1 - 0.6 * u)
+            ctx.move_to(p[0], p[1] + dy - ln)
+            ctx.line_to(p[0], p[1] + dy)
+            ctx.set_source_rgba(0.93, 0.97, 1.0, 0.8 * a)
+            ctx.set_line_width(2.8 * scale)
+            ctx.stroke()
+            if u < 0.15:
+                draw_droplet(ctx, p[0], p[1] + 3 * scale, 3.0 * scale, a)
+    ctx.restore()

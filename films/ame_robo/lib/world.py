@@ -270,7 +270,7 @@ def _shade(C, base, face="F", z=None, k=1.0):
     s = C["sunk"]
     amb = C["amb"]
     rain_f = {"F": 0.92, "L": 0.86, "R": 0.9, "T": 1.0, "U": 0.62}[face]
-    sun_f = {"F": 1.04, "L": 0.80, "R": 1.08, "T": 1.1, "U": 0.62}[face]
+    sun_f = {"F": 0.98, "L": 0.80, "R": 1.04, "T": 1.06, "U": 0.62}[face]
     rc = tuple(lerp(bb, aa, 0.2) * rain_f * 0.8 * bl for bb, aa, bl in zip(b, amb, (0.93, 0.98, 1.04)))
     if face in ("F", "R", "T"):
         sc = tuple(bb * sun_f * ww for bb, ww in zip(b, (1.04, 1.0, 0.9)))
@@ -569,7 +569,7 @@ _RAIN_LAYERS = {
 @lru_cache(maxsize=16)
 def _rain_seeds(layer, seed):
     n = _RAIN_LAYERS[layer][0]
-    rng = np.random.default_rng(seed * 31 + hash(layer) % 1000)
+    rng = np.random.default_rng(seed * 31 + {"bg": 1, "mid": 2, "fg": 3}[layer])
     return (rng.random(n), rng.random(n), rng.random(n), rng.random(n))
 
 
@@ -602,44 +602,52 @@ def draw_rain(ctx, t, weather, layer="mid", cam=CAM_ID, wind=0.2, seed=1, densit
     if region is not None:
         ctx.rectangle(x0r, y0r, x1r - x0r, y1r - y0r)
         ctx.clip()
-    nb = 4
-    paths = [[] for _ in range(nb)]
-    gust_t = t * 0.6
-    for i in range(n):
-        ln = L * (0.6 + 0.8 * rl[i])
-        yy = (ry[i] * span_h + t * sp * (0.85 + 0.3 * rl[i]) + offy) % span_h - 300
-        xx = (rx[i] * span_w + offx + (yy + 300) * vx / vy) % span_w - 200
-        # gusts: density varies in drifting sheets
-        g = 0.55 + 0.45 * noise1(xx * 0.004 - gust_t, seed + 3)
-        if ra[i] > g + 0.25:
-            continue
-        b = min(nb - 1, int(ra[i] * nb))
-        paths[b].append((xx, yy, ln))
+    rx, ry, rl, ra = rx[:n], ry[:n], rl[:n], ra[:n]
+    ln = L * (0.6 + 0.8 * rl)
+    yy = (ry * span_h + t * sp * (0.85 + 0.3 * rl) + offy) % span_h - 300
+    xx = (rx * span_w + offx + (yy + 300) * vx / vy) % span_w - 200
+    # gusts: density varies in drifting sheets
+    gx = xx * 0.004 - t * 0.6
+    g = 0.55 + 0.45 * (0.6 * np.sin(gx * 2.1 + seed) * np.sin(gx * 0.77 + 1.3 * seed) + 0.4 * np.sin(gx * 3.3 - 0.5))
+    keep = ra <= g + 0.25
+    nb = 3
+    bucket = np.minimum(nb - 1, (ra * nb).astype(int))
     wd = wd0 * zz * (1 + dof * 1.5)
+    ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+    fine = layer == "bg"
     for b in range(nb):
-        if not paths[b]:
+        sel = keep & (bucket == b)
+        if not sel.any():
             continue
+        X0, Y0, LN = xx[sel], yy[sel], ln[sel]
         a = al0 * (0.45 + 0.55 * (b + 0.5) / nb) * min(1.0, 0.35 + dens) / (1 + dof * 1.2)
-        # soft halo pass (motion-blur feel)
-        ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+        hx, hy = X0 - vx * LN * 0.5, Y0 - vy * LN * 0.5
+        tx, ty = X0 - vx * LN, Y0 - vy * LN
         if halo > 0 or dof > 0:
             ctx.set_line_width(wd * 2.6)
-            for (xx, yy, ln) in paths[b]:
-                ctx.move_to(xx, yy)
-                ctx.line_to(xx - vx * ln, yy - vy * ln)
+            for p in zip(X0.tolist(), Y0.tolist(), tx.tolist(), ty.tolist()):
+                ctx.move_to(p[0], p[1])
+                ctx.line_to(p[2], p[3])
             _set(ctx, col, a * 0.22)
             ctx.stroke()
-        # tail (faint, long) + head (brighter, short)
+        if fine:
+            ctx.set_line_width(wd)
+            for p in zip(X0.tolist(), Y0.tolist(), tx.tolist(), ty.tolist()):
+                ctx.move_to(p[0], p[1])
+                ctx.line_to(p[2], p[3])
+            _set(ctx, col, a * 0.8)
+            ctx.stroke()
+            continue
         ctx.set_line_width(wd * 0.8)
-        for (xx, yy, ln) in paths[b]:
-            ctx.move_to(xx - vx * ln * 0.45, yy - vy * ln * 0.45)
-            ctx.line_to(xx - vx * ln, yy - vy * ln)
+        for p in zip(hx.tolist(), hy.tolist(), tx.tolist(), ty.tolist()):
+            ctx.move_to(p[0], p[1])
+            ctx.line_to(p[2], p[3])
         _set(ctx, col, a * 0.45)
         ctx.stroke()
         ctx.set_line_width(wd)
-        for (xx, yy, ln) in paths[b]:
-            ctx.move_to(xx, yy)
-            ctx.line_to(xx - vx * ln * 0.5, yy - vy * ln * 0.5)
+        for p in zip(X0.tolist(), Y0.tolist(), hx.tolist(), hy.tolist()):
+            ctx.move_to(p[0], p[1])
+            ctx.line_to(p[2], p[3])
         _set(ctx, col, a)
         ctx.stroke()
     ctx.restore()
@@ -658,12 +666,25 @@ def _pt_in_poly(x, y, poly):
     return inside
 
 
+def _pip_np(x, y, poly):
+    """Vectorised point-in-polygon (even-odd)."""
+    inside = np.zeros(x.shape, bool)
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[i - 1]
+        cond = (y1 > y) != (y2 > y)
+        xint = (x2 - x1) * (y - y1) / ((y2 - y1) if y2 != y1 else 1e-9) + x1
+        inside ^= cond & (x < xint)
+    return inside
+
+
 def draw_splashes(ctx, t, weather, region=(0, 900, W, H), seed=2, density=1.0, horizon_y=None,
                   ground_y_fn=None, color=None, scale=1.0, rings=True, crowns=True):
     """Crown splashes + expanding ripple rings where drops hit the ground.
     region: (x0,y0,x1,y1) rectangle or a polygon [(x,y),...] in screen px.
     horizon_y: if given, sizes shrink towards the horizon (perspective).
-    ground_y_fn(x) -> y: alternatively scatter along a ground line (region y-range = band below it)."""
+    ground_y_fn(x) -> y: scatter along a ground line instead (y = fn(x) + 0..(y1-y0) band)."""
     C = palette(weather)
     dens = C["rain_amt"] * density
     if dens <= 0.002:
@@ -671,72 +692,88 @@ def draw_splashes(ctx, t, weather, region=(0, 900, W, H), seed=2, density=1.0, h
     col = _c(color or C["rain"])
     poly = None
     if isinstance(region[0], (tuple, list)):
-        poly = region
+        poly = [tuple(p) for p in region]
         xs = [p[0] for p in poly]
         ys = [p[1] for p in poly]
-        x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+        x0, y0, x1, y1 = max(-50, min(xs)), max(-50, min(ys)), min(W + 50, max(xs)), min(H + 50, max(ys))
     else:
         x0, y0, x1, y1 = region
     area = max(1.0, (x1 - x0) * (y1 - y0))
-    rate = 0.00008 * area * dens        # events per frame-slot
+    rate = 0.00008 * area * dens        # events per 1/24 s
     slot = 1 / 24.0
     life = 0.45
     k0 = int(math.floor((t - life) / slot))
     k1 = int(math.floor(t / slot))
-    nper = max(1, int(rate))
-    frac = rate - int(rate)
+    ev = []
+    for k in range(k0, k1 + 1):
+        rng = np.random.default_rng([seed & 0xFFFF, k & 0x7FFFFFFF])
+        cnt = rng.poisson(rate)
+        if cnt == 0:
+            continue
+        u = rng.random((cnt, 5))
+        ev.append(np.column_stack([k * slot + u[:, 0] * slot, u[:, 1:]]))
+    if not ev:
+        return
+    ev = np.concatenate(ev)
+    age = t - ev[:, 0]
+    ok = (age >= 0) & (age <= life)
+    ev, age = ev[ok], age[ok]
+    xs = x0 + (x1 - x0) * ev[:, 1]
+    if ground_y_fn is not None:
+        ys = np.array([ground_y_fn(x) for x in xs]) + ev[:, 2] * (y1 - y0)
+    else:
+        ys = y0 + (y1 - y0) * ev[:, 2]
+    if poly is not None:
+        ok = _pip_np(xs, ys, poly)
+        xs, ys, ev, age = xs[ok], ys[ok], ev[ok], age[ok]
+    if horizon_y is not None:
+        ss = scale * np.clip((ys - horizon_y) / max(1.0, (H - horizon_y)), 0.08, 1.6)
+    else:
+        ss = np.full(xs.shape, float(scale))
     ctx.save()
     ctx.set_line_cap(cairo.LINE_CAP_ROUND)
-    for k in range(k0, k1 + 1):
-        cnt = nper + (1 if _hash(seed, k, 999) < frac else 0)
-        for j in range(cnt):
-            te = k * slot + _hash(seed, k, j, 1) * slot
-            age = t - te
-            if age < 0 or age > life:
+    ps = age / life
+    if rings:
+        # bucket by alpha for batching
+        for bkt in range(4):
+            sel = np.nonzero((np.minimum(3, (ps * 4).astype(int)) == bkt))[0]
+            if len(sel) == 0:
                 continue
-            x = lerp(x0, x1, _hash(seed, k, j, 2))
-            y = lerp(y0, y1, _hash(seed, k, j, 3))
-            if ground_y_fn is not None:
-                y = ground_y_fn(x) + (y - y0) * 0.0 + _hash(seed, k, j, 5) * (y1 - y0)
-            if poly is not None and not _pt_in_poly(x, y, poly):
-                continue
-            s = scale
-            if horizon_y is not None:
-                s *= clamp((y - horizon_y) / max(1.0, (H - horizon_y)), 0.08, 1.6)
-            p = age / life
-            if rings:
+            pm = (bkt + 0.5) / 4
+            for i in sel.tolist():
+                x, y, s, p = xs[i], ys[i], ss[i], ps[i]
                 rr = (6 + 40 * p ** 0.6) * s
                 ctx.save()
                 ctx.translate(x, y)
                 ctx.scale(1, 0.32)
+                ctx.new_sub_path()
                 ctx.arc(0, 0, rr, 0, TAU)
-                ctx.restore()
-                ctx.set_line_width(max(0.6, 1.6 * s))
-                _set(ctx, col, 0.42 * (1 - p) ** 1.5)
-                ctx.stroke()
                 if p > 0.25:
-                    ctx.save()
-                    ctx.translate(x, y)
-                    ctx.scale(1, 0.32)
+                    ctx.new_sub_path()
                     ctx.arc(0, 0, rr * 0.55, 0, TAU)
-                    ctx.restore()
-                    _set(ctx, col, 0.25 * (1 - p) ** 1.5)
-                    ctx.stroke()
-            if crowns and p < 0.42:
-                q = p / 0.42
-                hgt = 18 * s * math.sin(q * math.pi) * (0.7 + 0.6 * _hash(seed, k, j, 4))
-                spr = 11 * s * q ** 0.7
-                ctx.set_line_width(max(0.6, 1.3 * s))
-                _set(ctx, col, 0.38 * (1 - q))
-                for d in (-1, -0.45, 0.45, 1):
-                    ctx.move_to(x + d * spr * 0.4, y)
-                    ctx.curve_to(x + d * spr * 0.6, y - hgt * 0.8, x + d * spr, y - hgt,
-                                 x + d * spr * 1.1, y - hgt * 0.6)
-                ctx.stroke()
-                for d in (-1, 1, -0.3, 0.3):
-                    ctx.arc(x + d * spr * 1.25, y - hgt * (1.15 if abs(d) < 1 else 0.85) - 3 * s * q,
-                            max(0.7, 1.8 * s), 0, TAU)
-                    ctx.fill()
+                ctx.restore()
+            ctx.set_line_width(max(0.7, 1.4 * float(np.median(ss[sel]))))
+            _set(ctx, col, 0.4 * (1 - pm) ** 1.5)
+            ctx.stroke()
+    if crowns:
+        sel = np.nonzero(ps < 0.42)[0]
+        for i in sel.tolist():
+            x, y, s = xs[i], ys[i], ss[i]
+            q = ps[i] / 0.42
+            hgt = 18 * s * math.sin(q * math.pi) * (0.7 + 0.6 * ev[i, 3])
+            spr = 11 * s * q ** 0.7
+            ctx.set_line_width(max(0.6, 1.3 * s))
+            _set(ctx, col, 0.38 * (1 - q))
+            for d in (-1, -0.45, 0.45, 1):
+                ctx.move_to(x + d * spr * 0.4, y)
+                ctx.curve_to(x + d * spr * 0.6, y - hgt * 0.8, x + d * spr, y - hgt,
+                             x + d * spr * 1.1, y - hgt * 0.6)
+            ctx.stroke()
+            for d in (-1, 1, -0.3, 0.3):
+                ctx.new_sub_path()
+                ctx.arc(x + d * spr * 1.25, y - hgt * (1.15 if abs(d) < 1 else 0.85) - 3 * s * q,
+                        max(0.7, 1.6 * s), 0, TAU)
+            ctx.fill()
     ctx.restore()
 
 
@@ -1959,7 +1996,7 @@ def _street_plates(wkey):
         m.fill()
     pm = _rgba_rows(m_s, y0)[..., 3:4]
     refl = soft * (1 - pm) + sharp * pm
-    refl[..., :3] += streak[..., :3] * 1.2 + _ablur(rea, 14 * ps, 14 * ps, 4)[..., :3] * 0.5
+    refl[..., :3] += streak[..., :3] * 1.6 + _ablur(rea, 14 * ps, 14 * ps, 4)[..., :3] * 0.5
     refl[..., 3:] = np.maximum(refl[..., 3:], np.clip(streak[..., :3].max(-1, keepdims=True) * 1.3, 0, 1))
     np.clip(refl, 0, 1, out=refl)
     refl_s = _rows_to_surface(refl, fh, y0)
@@ -2216,3 +2253,844 @@ def _street_drips(ctx, t, weather, cam):
                 pts.append((x, y, gy))
     sz = 2.6 * cam[2]
     draw_drips_from(ctx, t, pts, weather=weather, size=sz, gravity=2600 * cam[2], seed=33, alpha=0.7)
+
+
+# =========================================================================== shopfront (s02–s06)
+# Ground-level, near-frontal view of the closed dagashi shop 「ねこや」.  World coords == screen at
+# CAM_ID.  A side street on the right recedes to the vanishing point and opens a window of sky.
+SHOP_F = 2890.0
+SHOP_VP = (1660.0, 536.0)
+SHOP_HORIZON_Y = 536.0
+SHOP_EYE = 1.0                      # camera height (m)
+SHOP_WALL_Z = 9.0
+SHOP_AWN_Z = 7.8                    # awning front plane (drip line)
+SHOP_X0, SHOP_X1 = -4.7, -0.25      # dagashi facade extent (m)
+SHOP_AWN_X = (-4.95, -0.12)
+
+
+def _sp(mirror=False):
+    return _Proj(SHOP_F, SHOP_VP[0], SHOP_VP[1], SHOP_EYE, mirror=mirror)
+
+
+_SP = _sp()
+GROUND_Y = 880.0                                  # where characters stand (Z = 8.4 m)
+GROUND_Z = SHOP_F * SHOP_EYE / (GROUND_Y - SHOP_HORIZON_Y)
+WALL_BASE_Y = _SP(0, 0, SHOP_WALL_Z)[1]           # ≈ 857
+DRIP_GROUND_Y = _SP(0, 0, SHOP_AWN_Z)[1]          # ≈ 906  (front edge of the dry patch)
+AWNING_WALL_Y = _SP(0, 2.5, SHOP_WALL_Z)[1]       # ≈ 54
+AWNING_TOP_Y = _SP(0, 2.2, SHOP_AWN_Z)[1]         # ≈ 91  (top of the valance)
+AWNING_EDGE_Y = _SP(0, 1.93, SHOP_AWN_Z)[1]       # ≈ 191 (bottom of the valance scallops = drip edge)
+AWNING_X0 = _SP(SHOP_AWN_X[0], 0, SHOP_AWN_Z)[0]  # ≈ -174 (left end is off-screen)
+AWNING_X1 = _SP(SHOP_AWN_X[1], 0, SHOP_AWN_Z)[0]  # ≈ 1616
+SHOP_PX_PER_M = (GROUND_Y - SHOP_HORIZON_Y) / SHOP_EYE   # ≈ 344 px per metre at GROUND_Y
+SHOPFRONT_CAM = CAM_ID
+SHOP_RAINBOW = ((2350.0, 1050.0), 1250.0)         # default rainbow centre/radius (world px)
+
+# prop anchors (world == screen px at CAM_ID)
+DOOR_RECT = (_SP(-3.25, 0, 9)[0], _SP(0, 2.05, 9)[1], _SP(-1.85, 0, 9)[0], WALL_BASE_Y)   # x0,y0,x1,y1
+WINDOW_RECT = (_SP(-4.5, 0, 9)[0], _SP(0, 1.85, 9)[1], _SP(-3.6, 0, 9)[0], _SP(0, 0.95, 9)[1])
+BENCH_SEAT = (_SP(-4.45, 0, 8.75)[0], _SP(0, 0.42, 8.75)[1], _SP(-3.05, 0, 8.75)[0])     # x0, seat y, x1
+GACHAPON_X = (_SP(-1.78, 0, 8.7)[0], _SP(-1.05, 0, 8.7)[0])
+VENDING_RECT = (_SP(-0.98, 0, 8.6)[0], _SP(0, 1.83, 8.6)[1], _SP(-0.28, 0, 8.6)[0], _SP(0, 0, 8.6)[1])
+SIDE_STREET_X = _SP(SHOP_X1, 0, 9)[0]             # ≈ 1580: right of this is the side street
+
+
+def ground_y(x=None):
+    """Pavement line where characters stand (flat): GROUND_Y for any x."""
+    return GROUND_Y
+
+
+def shop_scale(y_feet):
+    """Relative character scale for feet at screen-world y (1.0 at GROUND_Y) — for moving in depth."""
+    return (y_feet - SHOP_HORIZON_Y) / (GROUND_Y - SHOP_HORIZON_Y)
+
+
+def shop_to_screen(X, Y, Z, cam=CAM_ID):
+    """3D shopfront point (m) -> screen."""
+    return to_screen(*_SP(X, Y, Z), cam)
+
+
+def awning_drip_points(cam=CAM_ID):
+    """Scallop tips along the valance bottom (screen coords) — natural drip sources."""
+    pts = []
+    ax0, ax1 = SHOP_AWN_X
+    nst = int(round((ax1 - ax0) / 0.35))
+    for k in range(nst):
+        x, y = _SP(lerp(ax0, ax1, (k + 0.5) / nst), 1.935, SHOP_AWN_Z)
+        pts.append(to_screen(x, y, cam))
+    return pts
+
+
+def _scallop_pts(Xa, Xb, Y, Z, depth=0.03, w=0.35):
+    pts = []
+    n = max(1, int(round(abs(Xb - Xa) / w)))
+    for k in range(n):
+        for q in np.linspace(0, 1, 7):
+            X = lerp(Xa + k * (Xb - Xa) / n, Xa + (k + 1) * (Xb - Xa) / n, q)
+            pts.append((X, Y - depth * math.sin(q * math.pi), Z))
+    return pts
+
+
+def _leaf_clump(L, cx, cy, r, col, seed, n=9, lit=None):
+    rng = np.random.default_rng(seed)
+    for k in range(n):
+        a = rng.uniform(-math.pi, 0.2)
+        d = rng.uniform(0.2, 0.75) * r
+        x, y = cx + math.cos(a) * d, cy + math.sin(a) * d * 0.9
+        rr = r * rng.uniform(0.32, 0.5)
+        L.save()
+        L.translate(x, y)
+        L.rotate(rng.uniform(0, math.pi))
+        L.scale(1, 0.55)
+        L.arc(0, 0, rr, 0, TAU)
+        L.restore()
+        _set(L, _mul(col, rng.uniform(0.8, 1.1)))
+        L.fill()
+        if lit is not None:
+            L.save()
+            L.translate(x - rr * 0.15, y - rr * 0.2)
+            L.scale(1, 0.4)
+            L.arc(0, 0, rr * 0.45, 0, TAU)
+            L.restore()
+            _set(L, lit, 0.35)
+            L.fill()
+
+
+def _pot(L, P, C, X, Z, w=0.32, h=0.3, col="#C8714A", plant="leaf", seed=0, face="F"):
+    x0, y0 = P(X - w / 2, h, Z)
+    x1, _ = P(X + w / 2, h, Z)
+    xb0, yb = P(X - w * 0.38, 0, Z)
+    xb1, _ = P(X + w * 0.38, 0, Z)
+    L.move_to(x0, y0)
+    L.line_to(x1, y0)
+    L.line_to(xb1, yb)
+    L.line_to(xb0, yb)
+    L.close_path()
+    pc = _shade(C, col, face)
+    _set(L, pc)
+    L.fill()
+    rim = P.s(Z) * 0.05
+    L.rectangle(x0 - rim * 0.3, y0 - rim * 0.2, (x1 - x0) + rim * 0.6, rim * 1.2)
+    _set(L, _mul(pc, 1.08))
+    L.fill()
+    cx = (x0 + x1) / 2
+    r = (x1 - x0) * 0.8
+    if plant == "leaf":
+        _leaf_clump(L, cx, y0 - r * 0.15, r, _shade(C, "#4E8A55", face), seed, 11, _shade(C, "#BFE0A0", face))
+    elif plant == "tall":
+        rng = np.random.default_rng(seed)
+        for k in range(9):
+            a = -math.pi / 2 + rng.uniform(-0.7, 0.7)
+            ln = r * rng.uniform(1.0, 1.9)
+            L.move_to(cx, y0)
+            L.curve_to(cx + math.cos(a) * ln * 0.3, y0 + math.sin(a) * ln * 0.5,
+                       cx + math.cos(a) * ln * 0.8, y0 + math.sin(a) * ln * 0.9,
+                       cx + math.cos(a) * ln, y0 + math.sin(a) * ln)
+            L.set_line_width(max(2, r * 0.12))
+            _set(L, _shade(C, "#5C9A5A" if k % 2 else "#3F7A4A", face))
+            L.stroke()
+    elif plant == "hydrangea":
+        _leaf_clump(L, cx, y0 - r * 0.1, r * 1.1, _shade(C, "#4A7F57", face), seed, 9, None)
+        rng = np.random.default_rng(seed + 5)
+        for k, (dx, dy) in enumerate(((-0.35, -0.45), (0.3, -0.55), (0.0, -0.85), (-0.55, -0.15), (0.5, -0.2))):
+            fx, fy = cx + dx * r, y0 + dy * r
+            fr = r * 0.36
+            base = ["#7D8FE0", "#9B7FD6", "#86A9EC", "#B58AD9", "#7FA0E8"][k]
+            L.arc(fx, fy, fr, 0, TAU)
+            _set(L, _shade(C, base, face, None, 0.85))
+            L.fill()
+            for j in range(16):
+                a = rng.uniform(0, TAU)
+                d = math.sqrt(rng.random()) * fr * 0.85
+                L.arc(fx + math.cos(a) * d, fy + math.sin(a) * d * 0.9, fr * 0.22, 0, TAU)
+                _set(L, _shade(C, mix(base, "#FFFFFF", rng.uniform(0.0, 0.45)), face))
+                L.fill()
+
+
+def _shop_scene(L, P, C, emit, mirror=False):
+    """Everything vertical in the shopfront view (the ground is drawn separately)."""
+    sunk = C["sunk"]
+    lamp = C["lamp"]
+    warm = C["warm"]
+    # ---------------------------------------------------------------- far: houses down the side street
+    for (X0, X1, Z, hgt, col, roof) in ((2.4, 9.0, 44.0, 6.2, "#D8CDB8", "#5A6680"), (-1.0, 2.2, 60.0, 7.0, "#C9D3D6", "#6B5A52"),
+                                        (2.3, 7.0, 30.0, 4.6, "#E4DCCB", "#4F5D78"), (-0.8, 1.6, 85.0, 9.5, "#BFC8CE", None)):
+        _fillp(L, P, _quadZ(Z, X0, X1, 0, hgt), _shade(C, col, "F", Z))
+        if roof:
+            _fillp(L, P, [(X0 - 0.4, hgt, Z), (X1 + 0.4, hgt, Z), ((X0 + X1) / 2 + 0.3, hgt + 1.6, Z + 2),
+                          ((X0 + X1) / 2 - 0.3, hgt + 1.6, Z + 2)], _shade(C, roof, "T", Z))
+        for k in range(int((X1 - X0) / 1.6)):
+            wx = X0 + 0.5 + k * 1.6
+            lit = (k + int(Z)) % 3 == 0
+            wc = mix(_shade(C, "#56606A", "F", Z), warm, 0.6 * lamp) if lit else _shade(C, "#7E93A6", "F", Z)
+            _fillp(L, P, _quadZ(Z, wx, wx + 0.8, 1.2, 2.2), wc)
+            if hgt > 5:
+                _fillp(L, P, _quadZ(Z, wx, wx + 0.8, 3.8, 4.8), _shade(C, "#7E93A6", "F", Z))
+    # trees behind the block wall
+    for (X, Z, r, seed) in ((4.2, 24.0, 2.2, 3), (6.5, 36.0, 3.0, 4), (3.2, 50.0, 2.6, 5)):
+        cx, cy = P(X, 3.6 + r * 0.6, Z)
+        _leaf_clump(L, cx, cy, r * P.s(Z), _shade(C, "#5F8F6A", "F", Z), seed, 14, _shade(C, "#A9D49A", "F", Z) if sunk > 0.1 else None)
+    # utility poles + wires in the side street
+    for (X, Z) in ((1.75, 13.0), (1.75, 34.0), (1.75, 60.0)):
+        sc = P.s(Z)
+        _fillp(L, P, _quadZ(Z, X - 0.15, X + 0.15, 0, 9.5), _shade(C, "#B5B2AA", "F", Z))
+        _fillp(L, P, _quadZ(Z, X - 0.85, X + 0.85, 8.7, 8.82), _shade(C, "#6C6F72", "F", Z))
+        for k in range(4):
+            _fillp(L, P, _quadZ(Z - 0.01, X - 0.15, X + 0.15, 0.3 + k * 0.3, 0.45 + k * 0.3),
+                   _shade(C, "#E2B93B" if k % 2 == 0 else "#2C2C2C", "F", Z))
+    L.set_line_cap(cairo.LINE_CAP_ROUND)
+    for (za, zb) in ((13.0, 34.0), (34.0, 60.0), (13.0, 9.2)):
+        for dx, yy, sag in ((-0.7, 8.85, 0.5), (0.7, 8.85, 0.55), (0.0, 7.9, 0.7)):
+            xb = 1.75 + dx if zb > 10 else -0.3
+            P.line(L, _wire_pts((1.75 + dx, yy, za), (xb, yy - (0 if zb > 10 else 2.0), zb), sag))
+            L.set_line_width(max(1.0, 0.03 * P.s(min(za, zb))))
+            _set(L, _shade(C, "#2E333A", "F", 15), 0.85)
+            L.stroke()
+    # wires crossing the sky towards camera-left (off frame)
+    for yy, sag in ((8.4, 0.9), (8.0, 1.1)):
+        P.line(L, _wire_pts((1.75, yy, 13.0), (-6.0, yy + 1.5, 9.3), sag))
+        L.set_line_width(2.4)
+        _set(L, _shade(C, "#2E333A", "F", 12), 0.8)
+        L.stroke()
+    # block wall + low house on the right of the side street
+    _fillp(L, P, _quadX(2.0, 0, 1.45, 9.0, 40.0), _shade(C, "#BDB8AC", "R", 14))
+    for k in range(1, 7):
+        P.line(L, [(2.0, k * 0.2, 9.0), (2.0, k * 0.2, 40.0)])
+        L.set_line_width(1.2)
+        _set(L, C["shadow"], 0.2)
+        L.stroke()
+    for zz in np.arange(9.4, 40, 0.4):
+        P.line(L, [(2.0, 0, zz), (2.0, 1.45, zz)])
+        L.set_line_width(max(0.6, 0.02 * P.s(zz)))
+        _set(L, C["shadow"], 0.12)
+        L.stroke()
+    _fillp(L, P, _quadX(2.0, 1.45, 1.55, 9.0, 40.0), _shade(C, "#D9D4C8", "T", 14))
+    # the dagashi shop's side wall facing the side street (+X face)
+    _fillp(L, P, _quadX(SHOP_X1, 0, 6.2, 9.0, 18.0), _shade(C, "#C9B79A", "L", 12))
+    P.line(L, [(SHOP_X1 + 0.05, 0, 9.6), (SHOP_X1 + 0.05, 6.0, 9.6)])
+    L.set_line_width(5)
+    _set(L, _shade(C, "#8A8F92", "L", 10))
+    L.stroke()
+    # ---------------------------------------------------------------- left neighbour (shutter)
+    Zn = 9.15
+    _fillp(L, P, _quadZ(Zn, -9.0, SHOP_X0, 0, 7.0), _shade(C, "#A9C7BF", "F", Zn))
+    _fillp(L, P, _quadZ(Zn, -9.0, SHOP_X0 - 0.15, 0, 2.3), _shade(C, "#AEB5BA", "F", Zn))
+    for k in range(26):
+        yy = 0.08 + k * 0.085
+        P.line(L, [(-9.0, yy, Zn), (SHOP_X0 - 0.15, yy, Zn)])
+        L.set_line_width(1.6)
+        _set(L, C["shadow"] if k % 2 == 0 else (1, 1, 1), 0.2 if k % 2 == 0 else 0.1)
+        L.stroke()
+    # ---------------------------------------------------------------- dagashi facade
+    Z = SHOP_WALL_Z
+    X0, X1 = SHOP_X0, SHOP_X1
+    plaster = _shade(C, "#EADFC8", "F", Z)
+    wood = _shade(C, "#6B4A36", "F", Z)
+    wood_l = _shade(C, "#8A6447", "F", Z)
+    _fillp(L, P, _quadZ(Z, X0, X1, 0, 7.0), plaster)
+    # lower wainscot boards
+    _fillp(L, P, _quadZ(Z, X0, X1, 0, 0.85), wood_l)
+    for xb in np.arange(X0 + 0.14, X1, 0.14):
+        P.line(L, [(xb, 0.02, Z), (xb, 0.85, Z)])
+        L.set_line_width(1.4)
+        _set(L, wood, 0.6)
+        L.stroke()
+    _fillp(L, P, _quadZ(Z, X0, X1, 0.82, 0.9), wood)
+    # posts
+    for xp in (X0, -3.42, -1.0, X1 - 0.12):
+        _fillp(L, P, _quadZ(Z - 0.01, xp, xp + 0.12, 0, 2.5), wood)
+    # beam under the awning
+    _fillp(L, P, _quadZ(Z - 0.01, X0, X1, 2.3, 2.5), wood)
+    # ---- small window (warm light) with lattice
+    wx0, wx1, wy0, wy1 = -4.5, -3.6, 0.95, 1.85
+    inner = mix(_shade(C, "#6E5A48", "F", Z), mix(warm, "#E89A50", 0.3), 0.62 * (0.45 + 0.55 * lamp))
+    _fillp(L, P, _quadZ(Z, wx0, wx1, wy0, wy1), inner)
+    gx0, gy0 = P(wx0, wy1, Z)
+    gx1, gy1 = P(wx1, wy0, Z)
+    g = cairo.RadialGradient((gx0 + gx1) / 2, (gy0 + gy1) / 2, 5, (gx0 + gx1) / 2, (gy0 + gy1) / 2, (gx1 - gx0) * 0.8)
+    g.add_color_stop_rgba(0, *mix(warm, (1, 1, 1), 0.3), 0.55 * (0.4 + 0.6 * lamp))
+    g.add_color_stop_rgba(1, *warm, 0.0)
+    P.poly(L, _quadZ(Z, wx0, wx1, wy0, wy1))
+    L.set_source(g)
+    L.fill()
+    for xb in np.linspace(wx0, wx1, 8):
+        _fillp(L, P, _quadZ(Z - 0.01, xb - 0.018, xb + 0.018, wy0, wy1), wood)
+    for yb in (wy0, (wy0 + wy1) / 2, wy1):
+        _fillp(L, P, _quadZ(Z - 0.01, wx0 - 0.04, wx1 + 0.04, yb - 0.03, yb + 0.03), wood)
+    P.poly(emit, _quadZ(Z, wx0, wx1, wy0, wy1))
+    _set(emit, warm, 0.35 * (0.35 + 0.65 * lamp))
+    emit.fill()
+    # flower box under the window
+    _fillp(L, P, _quadZ(Z - 0.12, wx0 - 0.05, wx1 + 0.05, wy0 - 0.2, wy0 - 0.02), _shade(C, "#7A5A44", "F", Z))
+    for k, xx in enumerate(np.linspace(wx0 + 0.1, wx1 - 0.1, 4)):
+        cx, cy = P(xx, wy0 - 0.02, Z - 0.12)
+        _leaf_clump(L, cx, cy, 0.17 * P.s(Z), _shade(C, "#4F8A57", "F", Z), 40 + k, 7, _shade(C, "#BFE0A0", "F", Z))
+        L.arc(cx + 6, cy - 0.12 * P.s(Z), 0.035 * P.s(Z), 0, TAU)
+        _set(L, _shade(C, ["#F07A8A", "#F6D35B", "#FFFFFF", "#E8735A"][k], "F", Z))
+        L.fill()
+    # ---- glass sliding doors
+    dx0, dx1, dy1 = -3.25, -1.85, 2.05
+    _fillp(L, P, _quadZ(Z, dx0 - 0.06, dx1 + 0.06, 0, dy1 + 0.08), wood)
+    interior = mix(_shade(C, "#4F4038", "F", Z), mix(warm, "#D98A4A", 0.35), 0.38 * (0.4 + 0.6 * lamp))
+    for k in range(2):
+        px0 = lerp(dx0, dx1, k / 2) + 0.05
+        px1 = lerp(dx0, dx1, (k + 1) / 2) - 0.05
+        _fillp(L, P, _quadZ(Z, px0, px1, 0.4, dy1 - 0.05), interior)
+        L.save()
+        P.poly(L, _quadZ(Z, px0, px1, 0.4, dy1 - 0.05))
+        L.clip()
+        # shelves with candy jars behind the glass
+        for sy in (0.75, 1.2, 1.62):
+            _fillp(L, P, _quadZ(Z + 0.5, px0 - 0.05, px1 + 0.05, sy - 0.03, sy), _mul(interior, 0.6))
+            rng = np.random.default_rng(int(sy * 100) + k)
+            for j in range(5):
+                jx = lerp(px0 + 0.06, px1 - 0.1, j / 4.5)
+                jc = rng.choice(["#F07A8A", "#F6D35B", "#7FC8E8", "#9BD27A", "#F4A35A", "#C79BE8"])
+                cx, cy = P(jx + 0.04, sy + 0.12, Z + 0.5)
+                rr = 0.05 * P.s(Z + 0.5)
+                L.rectangle(cx - rr, cy - rr * 1.4, rr * 2, rr * 2.4)
+                _set(L, mix(_shade(C, jc, "F", Z), interior, 0.35))
+                L.fill()
+                L.rectangle(cx - rr * 0.8, cy - rr * 1.75, rr * 1.6, rr * 0.4)
+                _set(L, _mul(interior, 0.5))
+                L.fill()
+        L.restore()
+        # inner curtain (closed) on the right panel, half drawn on the left
+        cfrac = 1.0 if k == 1 else 0.38
+        cc = mix(_shade(C, "#E3CFA8", "F", Z), mix(warm, "#E8A05A", 0.3), 0.45 * lamp)
+        _fillp(L, P, _quadZ(Z - 0.01, px1 - (px1 - px0) * cfrac, px1, 0.4, dy1 - 0.05), cc, 0.92)
+        for fx in np.linspace(px1 - (px1 - px0) * cfrac + 0.04, px1 - 0.03, max(2, int(9 * cfrac))):
+            P.line(L, [(fx, 0.42, Z - 0.012), (fx, dy1 - 0.07, Z - 0.012)])
+            L.set_line_width(1.3)
+            _set(L, _mul(cc, 0.82), 0.7)
+            L.stroke()
+        # glass sheen
+        a0 = P(px0, dy1 - 0.05, Z)
+        a1 = P(px1, 0.4, Z)
+        g = cairo.LinearGradient(a0[0], a0[1], a1[0], a1[1])
+        g.add_color_stop_rgba(0.0, 1, 1, 1, 0.0)
+        g.add_color_stop_rgba(0.30, 1, 1, 1, 0.0)
+        g.add_color_stop_rgba(0.33, 1, 1, 1, 0.22)
+        g.add_color_stop_rgba(0.40, 1, 1, 1, 0.22)
+        g.add_color_stop_rgba(0.43, 1, 1, 1, 0.0)
+        g.add_color_stop_rgba(0.5, 1, 1, 1, 0.08)
+        g.add_color_stop_rgba(0.55, 1, 1, 1, 0.0)
+        P.poly(L, _quadZ(Z - 0.02, px0, px1, 0.4, dy1 - 0.05))
+        L.set_source(g)
+        L.fill()
+        # lower wooden kick panel + frame bars
+        _fillp(L, P, _quadZ(Z - 0.02, px0 - 0.02, px1 + 0.02, 0.02, 0.4), wood_l)
+        _fillp(L, P, _quadZ(Z - 0.02, px0 - 0.02, px1 + 0.02, 1.2, 1.24), wood)
+        P.poly(emit, _quadZ(Z, px0, px1, 0.4, dy1 - 0.05))
+        _set(emit, warm, 0.14 * (0.3 + 0.7 * lamp))
+        emit.fill()
+    # paper notice 「おやすみ」 on the right door
+    nx0, nx1, ny0, ny1 = -2.42, -2.1, 1.2, 1.72
+    _fillp(L, P, _quadZ(Z - 0.03, nx0, nx1, ny0, ny1), _shade(C, "#FFFDF4", "F", Z))
+    _text_on_quad(L, P, "おやすみ", ((nx0, ny1, Z - 0.03), (nx1, ny1, Z - 0.03), (nx0, ny0, Z - 0.03)),
+                  0.08 * P.s(Z), "#3A3A40", vertical=True, font="klee", fit=0.8)
+    for (tx, ty) in ((nx0 + 0.03, ny1 - 0.03), (nx1 - 0.03, ny1 - 0.03)):
+        x_, y_ = P(tx, ty, Z - 0.03)
+        L.rectangle(x_ - 6, y_ - 3, 12, 6)
+        _set(L, (1, 1, 1), 0.7)
+        L.fill()
+    # ---- above the awning (seen when tilting up): signboard, 2F, roof
+    _fillp(L, P, _quadZ(Z - 0.05, X0 + 0.2, X1 - 0.2, 2.62, 3.3), wood)
+    _fillp(L, P, _quadZ(Z - 0.06, X0 + 0.28, X1 - 0.28, 2.68, 3.24), _shade(C, "#F4EDDC", "F", Z))
+    _text_on_quad(L, P, "だがし  ねこや商店", ((X0 + 0.3, 3.2, Z - 0.06), (X1 - 0.3, 3.2, Z - 0.06), (X0 + 0.3, 2.72, Z - 0.06)),
+                  0.4 * P.s(Z), "#3B2A22", font="klee", fit=0.86)
+    _fillp(L, P, _quadZ(Z - 0.02, X0, X1, 3.35, 3.5), wood)
+    for k, (wx0_, wx1_) in enumerate(((-4.2, -2.9), (-2.1, -0.8))):
+        _fillp(L, P, _quadZ(Z - 0.01, wx0_ - 0.08, wx1_ + 0.08, 3.95, 5.35), wood)
+        lit = k == 0
+        gc = mix(_shade(C, "#5E6B76", "F", Z), warm, 0.65 * lamp) if lit else _shade(C, "#8DA2B3", "F", Z)
+        _fillp(L, P, _quadZ(Z - 0.015, wx0_, wx1_, 4.03, 5.27), gc)
+        for xb in np.linspace(wx0_, wx1_, 4)[1:-1]:
+            _fillp(L, P, _quadZ(Z - 0.02, xb - 0.02, xb + 0.02, 4.03, 5.27), wood)
+        _fillp(L, P, _quadZ(Z - 0.25, wx0_ - 0.15, wx1_ + 0.15, 3.85, 3.95), wood_l)
+        if lit:
+            P.poly(emit, _quadZ(Z, wx0_, wx1_, 4.03, 5.27))
+            _set(emit, warm, 0.4 * lamp)
+            emit.fill()
+    # tiled roof eave
+    tile = _shade(C, "#4F5A70", "U", Z)
+    _fillp(L, P, [(X0 - 0.3, 5.75, Z), (X1 + 0.3, 5.75, Z), (X1 + 0.3, 5.75, Z - 0.7), (X0 - 0.3, 5.75, Z - 0.7)],
+           _shade(C, "#4A3F38", "U", Z))
+    _fillp(L, P, _quadZ(Z - 0.7, X0 - 0.3, X1 + 0.3, 5.75, 5.95), tile)
+    for xb in np.arange(X0 - 0.3, X1 + 0.3, 0.22):
+        x_, y_ = P(xb + 0.11, 5.75, Z - 0.7)
+        L.arc(x_, y_, 0.06 * P.s(Z - 0.7), 0, math.pi)
+        _set(L, _mul(tile, 0.8))
+        L.fill()
+    # ambient occlusion under the awning
+    ya_ = P(0, 2.5, Z)[1]
+    yb_ = P(0, 0.9, Z)[1]
+    g = cairo.LinearGradient(0, ya_, 0, yb_)
+    g.add_color_stop_rgba(0, *C["shadow"], 0.38 + 0.12 * sunk)
+    g.add_color_stop_rgba(0.45, *C["shadow"], (0.12 + 0.14 * sunk))
+    g.add_color_stop_rgba(1, *C["shadow"], 0.0)
+    P.poly(L, _quadZ(Z - 0.04, X0, X1, 0.9, 2.5))
+    L.set_source(g)
+    L.fill()
+    # ---------------------------------------------------------------- props at the wall base
+    # bench
+    bx0, bx1, bz0, bz1, by = -4.45, -3.05, 8.72, 9.0, 0.42
+    for lx in (bx0 + 0.08, bx1 - 0.14):
+        _fillp(L, P, _quadZ(bz0 + 0.03, lx, lx + 0.06, 0, by), _shade(C, "#56798A", "F", bz0))
+        _fillp(L, P, _quadZ(bz1 - 0.04, lx, lx + 0.06, 0, by), _shade(C, "#4F6F7E", "F", bz1))
+    top = _shade(C, "#8FB6C6", "T", bz0)
+    P.poly(L, [(bx0, by, bz0), (bx1, by, bz0), (bx1, by, bz1), (bx0, by, bz1)])
+    _set(L, top)
+    L.fill()
+    for k in range(1, 3):
+        zz = lerp(bz0, bz1, k / 3)
+        P.line(L, [(bx0, by, zz), (bx1, by, zz)])
+        L.set_line_width(1.2)
+        _set(L, C["shadow"], 0.3)
+        L.stroke()
+    _fillp(L, P, _quadZ(bz0, bx0, bx1, by - 0.06, by), _shade(C, "#6F98AA", "F", bz0))
+    for lx in (bx0 + 0.08, bx1 - 0.14):
+        _fillp(L, P, _quadZ(bz1 - 0.03, lx, lx + 0.06, by, by + 0.42), _shade(C, "#4F6F7E", "F", bz1))
+    for yy in (by + 0.18, by + 0.34):
+        _fillp(L, P, _quadZ(bz1 - 0.035, bx0, bx1, yy, yy + 0.08), _shade(C, "#86ADBE", "F", bz1))
+    # umbrella stand (empty!)
+    usx = -3.32
+    _fillp(L, P, _quadZ(8.85, usx - 0.1, usx + 0.1, 0, 0.5), _shade(C, "#3E6FA8", "F", 8.85))
+    cx, cy = P(usx, 0.5, 8.85)
+    L.save()
+    L.translate(cx, cy)
+    L.scale(1, 0.18)
+    L.arc(0, 0, 0.1 * P.s(8.85), 0, TAU)
+    L.restore()
+    _set(L, _shade(C, "#1F3550", "F", 8.85))
+    L.fill()
+    for xx in (usx - 0.1, usx + 0.1):
+        _fillp(L, P, _quadZ(8.84, xx - 0.012, xx + 0.012, 0, 0.5), _shade(C, "#9DB4CF", "F", 8.85), 0.6)
+    # potted plants
+    _pot(L, P, C, -4.62, 8.8, 0.3, 0.32, "#C8714A", "hydrangea", 7)
+    _pot(L, P, C, -1.92, 8.82, 0.22, 0.26, "#B9653F", "tall", 8)
+    _pot(L, P, C, -3.55, 8.95, 0.18, 0.18, "#D08B5E", "leaf", 9)
+    # gachapon machines
+    for k, gx in enumerate((-1.78, -1.42)):
+        gz = 8.72
+        w = 0.34
+        red = _shade(C, ["#D9473F", "#3E7CC8"][k], "F", gz)
+        _fillp(L, P, _quadZ(gz, gx, gx + w, 0, 0.12), _shade(C, "#3A3A3A", "F", gz))
+        _fillp(L, P, _quadZ(gz, gx, gx + w, 0.12, 0.66), red)
+        _fillp(L, P, _quadZ(gz - 0.005, gx + 0.05, gx + w - 0.05, 0.42, 0.6), _shade(C, "#F4EFE3", "F", gz))
+        cx, cy = P(gx + w / 2, 0.51, gz - 0.01)
+        L.arc(cx, cy, 0.055 * P.s(gz), 0, TAU)
+        _set(L, _shade(C, "#C9CDD2", "F", gz))
+        L.fill()
+        L.rectangle(cx - 0.05 * P.s(gz), cy - 0.008 * P.s(gz), 0.1 * P.s(gz), 0.016 * P.s(gz))
+        _set(L, _shade(C, "#6A6E72", "F", gz))
+        L.fill()
+        _fillp(L, P, _quadZ(gz - 0.005, gx + 0.1, gx + w - 0.1, 0.16, 0.3), _shade(C, "#2A2A2A", "F", gz))
+        # clear capsule case
+        _fillp(L, P, _quadZ(gz, gx + 0.01, gx + w - 0.01, 0.66, 1.22), _shade(C, "#DDE9EF", "F", gz), 0.55)
+        rng = np.random.default_rng(11 + k)
+        for j in range(22):
+            cxx = rng.uniform(gx + 0.05, gx + w - 0.05)
+            cyy = 0.7 + (rng.random() ** 0.7) * 0.42
+            if cyy > 0.7 + 0.42 * (1 - 0.0):
+                continue
+            x_, y_ = P(cxx, cyy, gz + 0.05)
+            rr = 0.035 * P.s(gz)
+            cc = rng.choice(["#F07A8A", "#F6D35B", "#7FC8E8", "#9BD27A", "#F4A35A", "#C79BE8", "#FFFFFF"])
+            L.arc(x_, y_, rr, 0, math.pi)
+            _set(L, _shade(C, "#F2F2F2", "F", gz))
+            L.fill()
+            L.arc(x_, y_, rr, math.pi, TAU)
+            _set(L, _shade(C, cc, "F", gz))
+            L.fill()
+        x0_, y0_ = P(gx + 0.03, 1.2, gz)
+        L.rectangle(x0_, y0_, 0.025 * P.s(gz), 0.45 * P.s(gz))
+        _set(L, (1, 1, 1), 0.35)
+        L.fill()
+        _fillp(L, P, _quadZ(gz, gx - 0.01, gx + w + 0.01, 1.22, 1.3), red)
+    # vending machine (glowing)
+    vx0, vx1, vz, vh = -0.98, -0.28, 8.6, 1.83
+    _fillp(L, P, _quadX(vx1, 0, vh, vz, 9.0), _shade(C, "#E9EEF2", "L", vz, 0.85))
+    _fillp(L, P, _quadZ(vz, vx0, vx1, 0, vh), _shade(C, "#E2E7EB", "F", vz))
+    disp = mix(_shade(C, "#BFE6F2", "F", vz), C["vend"], 0.45)
+    _fillp(L, P, _quadZ(vz - 0.005, vx0 + 0.06, vx1 - 0.06, 0.9, vh - 0.08), disp)
+    rng = np.random.default_rng(5)
+    for row, yy in enumerate((0.98, 1.27, 1.54)):
+        _fillp(L, P, _quadZ(vz - 0.006, vx0 + 0.08, vx1 - 0.08, yy - 0.03, yy - 0.01), _mul(disp, 0.75))
+        for k in range(6):
+            xx = vx0 + 0.1 + k * 0.088
+            c = rng.choice(["#E85A4F", "#3E7CC8", "#F2C14E", "#5DB86A", "#FFFFFF", "#F08A3C", "#8A5A3C"])
+            _fillp(L, P, _quadZ(vz - 0.007, xx, xx + 0.05, yy, yy + 0.19), _shade(C, c, "F", vz))
+            x_, y_ = P(xx + 0.025, yy - 0.05, vz - 0.007)
+            L.arc(x_, y_, 3, 0, TAU)
+            _set(L, (0.3, 0.9, 0.5) if k % 2 else (1.0, 0.35, 0.3), 0.9)
+            L.fill()
+    _fillp(L, P, _quadZ(vz - 0.006, vx0 + 0.1, vx1 - 0.1, 0.15, 0.35), _shade(C, "#2A2A2A", "F", vz))
+    _fillp(L, P, _quadZ(vz - 0.006, vx0 + 0.45, vx1 - 0.08, 0.5, 0.75), _shade(C, "#C9CDD2", "F", vz))
+    P.poly(emit, _quadZ(vz, vx0 + 0.06, vx1 - 0.06, 0.9, vh - 0.08))
+    _set(emit, C["vend"], 0.32 * (0.45 + 0.55 * lamp))
+    emit.fill()
+    # ---------------------------------------------------------------- awning
+    Za, Zw = SHOP_AWN_Z, SHOP_WALL_Z
+    ax0, ax1 = SHOP_AWN_X
+    red, cream = "#C94A43", "#F3E8D2"
+    nst = int(round((ax1 - ax0) / 0.35))
+    for k in range(nst):
+        xa = lerp(ax0, ax1, k / nst)
+        xb = lerp(ax0, ax1, (k + 1) / nst)
+        col = red if k % 2 == 0 else cream
+        # underside: lit through the fabric when sunny
+        uc = mix(_shade(C, col, "U", Za), _c(col), 0.35 * sunk)
+        _fillp(L, P, [(xa, 2.5, Zw), (xb, 2.5, Zw), (xb, 2.2, Za), (xa, 2.2, Za)], uc)
+    # side flap at the right end (faces +X)
+    _fillp(L, P, [(ax1, 2.5, Zw), (ax1, 2.2, Za), (ax1, 1.95, Za)], _shade(C, red, "L", Za, 0.85))
+    # valance: vertical stripes, scalloped edge, cream name panel
+    for k in range(nst):
+        xa = lerp(ax0, ax1, k / nst)
+        xb = lerp(ax0, ax1, (k + 1) / nst)
+        col = red if k % 2 == 0 else cream
+        pts = [(xa, 2.2, Za), (xb, 2.2, Za)] + _scallop_pts(xb, xa, 1.99, Za, 0.06, w=(xb - xa))
+        _fillp(L, P, pts, _shade(C, col, "F", Za))
+    _fillp(L, P, _quadZ(Za, ax0, ax1, 2.185, 2.2), _shade(C, "#A8362F", "F", Za))
+    _fillp(L, P, _quadZ(Za - 0.005, -4.0, -1.1, 2.0, 2.17), _shade(C, "#FBF3E0", "F", Za))
+    P.poly(L, _quadZ(Za - 0.006, -4.0, -1.1, 2.0, 2.17))
+    L.set_line_width(2.5)
+    _set(L, _shade(C, "#A8362F", "F", Za))
+    L.stroke()
+    _text_on_quad(L, P, "だがし ・ ねこや", ((-3.95, 2.165, Za - 0.007), (-1.15, 2.165, Za - 0.007), (-3.95, 2.005, Za - 0.007)),
+                  0.13 * P.s(Za), "#B83A33", fit=0.92)
+    # little cat-face logo
+    cx, cy = P(-2.55, 2.27, Za)
+    cx, cy = P(-0.65, 2.085, Za)
+    L.arc(cx, cy, 0.075 * P.s(Za), 0, TAU)
+    _set(L, _shade(C, "#FBF3E0", "F", Za))
+    L.fill()
+    r = 0.055 * P.s(Za)
+    L.arc(cx, cy, r, 0, TAU)
+    _set(L, _shade(C, "#B83A33", "F", Za))
+    L.fill()
+    for d in (-1, 1):
+        L.move_to(cx + d * r * 0.95, cy - r * 0.2)
+        L.line_to(cx + d * r * 0.75, cy - r * 1.35)
+        L.line_to(cx + d * r * 0.2, cy - r * 0.85)
+        L.close_path()
+        L.fill()
+    # wet sheen on the valance
+    g = cairo.LinearGradient(0, P(0, 2.2, Za)[1], 0, P(0, 1.95, Za)[1])
+    g.add_color_stop_rgba(0, 1, 1, 1, 0.0)
+    g.add_color_stop_rgba(0.6, 1, 1, 1, 0.10)
+    g.add_color_stop_rgba(1, 1, 1, 1, 0.0)
+    P.poly(L, _quadZ(Za - 0.01, ax0, ax1, 1.95, 2.2))
+    L.set_source(g)
+    L.fill()
+    # sunlit: shadow of the awning on the wall + under-awning shade
+
+
+def _shop_ground(L, P, C):
+    """Pavement (dry under the awning, wet in front), road strip, side-street asphalt."""
+    hz = P.vpy
+    # side street + far ground (wet asphalt)
+    g = cairo.LinearGradient(0, hz, 0, 1100)
+    g.add_color_stop_rgb(0, *mix(C["street"], C["haze"], 0.6))
+    g.add_color_stop_rgb(0.4, *C["street"])
+    g.add_color_stop_rgb(1, *_mul(C["street"], 0.92))
+    L.rectangle(-2000, hz, 6000, 2000)
+    L.set_source(g)
+    L.fill()
+    # pavement in front of the shops (lighter tiles), wet
+    pave = C["pave"]
+    _fillp(L, P, [(-12, 0, 6.2), (SHOP_X1 + 0.05, 0, 6.2), (SHOP_X1 + 0.05, 0, 9.3), (-12, 0, 9.3)], pave)
+    # dry patch under the awning (+ ragged wet edge)
+    dry = C["pave_dry"]
+    edge = []
+    for X in np.linspace(SHOP_AWN_X[1], -12, 90):
+        edge.append((X, 0, SHOP_AWN_Z + 0.06 + 0.06 * noise1(X * 3.1, 4) + 0.03 * noise1(X * 9, 5)))
+    _fillp(L, P, [(-12, 0, 9.3), (SHOP_AWN_X[1] - 0.02, 0, 9.3)] + edge, dry)
+    # wet darkening fringe just inside the drip line
+    P.line(L, edge)
+    L.set_line_width(7)
+    _set(L, mix(dry, pave, 0.6), 0.6)
+    L.stroke()
+    # gutter + road strip
+    _fillp(L, P, [(-12, 0, 5.0), (SHOP_X1 + 0.05, 0, 5.0), (SHOP_X1 + 0.05, 0, 6.2), (-12, 0, 6.2)], _mul(C["street"], 0.95))
+    P.line(L, [(-12, 0.03, 6.2), (SHOP_X1 + 0.05, 0.03, 6.2)])
+    L.set_line_width(4)
+    _set(L, C["street_hi"], 0.4)
+    L.stroke()
+
+
+def _shop_ground_overlay(L, P, C, t=0.0):
+    """Tile joints, puddle rims, sheen — drawn over the reflection."""
+    # tile joints parallel to the wall
+    for z in np.arange(6.2, 9.3, 0.45):
+        P.line(L, [(-12, 0, z), (SHOP_X1, 0, z)])
+        L.set_line_width(1.5 if z > 7.8 else 1.8)
+        _set(L, C["shadow"], 0.16 if z > 7.8 else 0.25)
+        L.stroke()
+    for x in np.arange(-12, SHOP_X1, 0.45):
+        P.line(L, [(x, 0, 6.2), (x, 0, 9.0)])
+        L.set_line_width(1.4)
+        _set(L, C["shadow"], 0.15)
+        L.stroke()
+    # side street gutter lines & centre markings
+    for X in (SHOP_X1 + 0.2, 1.85):
+        P.line(L, [(X, 0, 5.0), (X, 0, 120)])
+        L.set_line_width(2.2)
+        _set(L, C["shadow"], 0.4)
+        L.stroke()
+    for (X, Z, rx, rz, seed) in _SHOP_PUDDLES:
+        pts = _puddle_poly(P, X, Z, rx, rz, seed, 24)
+        P.poly(L, pts)
+        L.set_line_width(2.0)
+        _set(L, C["shadow"], 0.18)
+        L.stroke()
+        far = pts[2:11]
+        if len(far) > 2:
+            P.line(L, far)
+            L.set_line_width(2.4)
+            _set(L, C["glint"], 0.25 + 0.3 * C["sunk"])
+            L.stroke()
+
+
+_SHOP_PUDDLES = [(-3.6, 6.9, 0.9, 0.35, 1), (-1.1, 6.6, 0.75, 0.28, 2), (0.85, 11.0, 0.55, 2.2, 3),
+                 (-5.0, 7.45, 0.6, 0.18, 4), (0.6, 6.0, 0.5, 0.3, 5)]
+
+
+def _shop_wet_mask(L, P, C):
+    """Alpha = wet reflectivity (0 on the dry patch / walls)."""
+    hz = P.vpy
+    g = cairo.LinearGradient(0, hz, 0, 1100)
+    g.add_color_stop_rgba(0, 1, 1, 1, 0.95)
+    g.add_color_stop_rgba(0.5, 1, 1, 1, 0.7)
+    g.add_color_stop_rgba(1, 1, 1, 1, 0.55)
+    # side street + road + wet pavement
+    edge = []
+    for X in np.linspace(-12, SHOP_AWN_X[1], 90):
+        edge.append((X, 0, SHOP_AWN_Z + 0.06 + 0.06 * noise1(X * 3.1, 4) + 0.03 * noise1(X * 9, 5)))
+    P.poly(L, [(-12, 0, 4.0)] + edge + [(SHOP_AWN_X[1], 0, 9.0), (SHOP_X1, 0, 9.0), (SHOP_X1, 0, 400), (6, 0, 400), (6, 0, 4.0)])
+    L.set_source(g)
+    L.fill()
+    for (X, Z, rx, rz, seed) in _SHOP_PUDDLES:
+        P.poly(L, _puddle_poly(P, X, Z, rx, rz, seed))
+        _set(L, (1, 1, 1), 1.0)
+        L.fill()
+
+
+_SHOP_CACHE = _LRU(4)
+
+
+def _shop_build(wq, ck, dof):
+    """Render shopfront layers at exact cam: back (opaque, sky transparent), mirror (blurred),
+    wet mask (A), overlay (+ baked glow).  Cached by (weather 0.01, cam, dof)."""
+    C = palette(wq / 100.0)
+    cam = ck
+    P = _sp()
+    Pm = _sp(mirror=True)
+
+    def surf():
+        s = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+        c = cairo.Context(s)
+        c.set_line_join(cairo.LINE_JOIN_ROUND)
+        c.set_line_cap(cairo.LINE_CAP_ROUND)
+        _apply_cam(c, cam)
+        return s, c
+
+    b_s, b = surf()
+    e_s, e = surf()
+    _shop_ground(b, P, C)
+    _shop_scene(b, P, C, e)
+    # overlay: joints, rims + light pools
+    o_s, o = surf()
+    _shop_ground_overlay(o, P, C)
+    # warm light spill from door / window onto the ground
+    for (xa, xb, k) in ((-3.3, -1.8, 0.32), (-4.6, -3.5, 0.22), (-1.0, -0.25, 0.3)):
+        col = C["vend"] if xa > -1.5 else C["warm"]
+        x0, y0 = P(xa, 0, SHOP_WALL_Z)
+        x1, y1 = P(xb, 0, 6.6)
+        gg = cairo.LinearGradient(0, y0, 0, y1)
+        gg.add_color_stop_rgba(0, *col, k * (0.3 + 0.7 * C["lamp"]))
+        gg.add_color_stop_rgba(1, *col, 0)
+        P.poly(e, [(xa, 0, SHOP_WALL_Z), (xb, 0, SHOP_WALL_Z), (xb + 0.5, 0, 6.6), (xa - 0.5, 0, 6.6)])
+        e.set_source(gg)
+        e.fill()
+    # mirrored scene
+    m_s, m = surf()
+    _shop_scene(m, Pm, C, cairo.Context(cairo.ImageSurface(cairo.FORMAT_ARGB32, 4, 4)), mirror=True)
+    # wet mask
+    w_s, wc = surf()
+    _shop_wet_mask(wc, P, C)
+    # rows that can show reflection
+    wa = _rgba_rows(w_s)[..., 3]
+    rows = np.nonzero(wa.max(axis=1) > 0.01)[0]
+    y0 = int(rows[0]) if len(rows) else H
+    # blur mirror (vertical smear) in the wet rows
+    if y0 < H:
+        ma = _rgba_rows(m_s, y0)
+        k = cam[2]
+        mb = _ablur(ma, 7 * k + dof * 0.5, 1.8 * k + dof * 0.5, 2)
+        m_s = _rows_to_surface(mb, H, y0)
+    # glow
+    ea = _rgba_rows(e_s)
+    glow = _ablur(ea, 24 * cam[2], 24 * cam[2], 6) + _ablur(ea, 6 * cam[2], 6 * cam[2], 2) * 0.5
+    oa = _rgba_rows(o_s)
+    oa[..., :3] = np.minimum(oa[..., :3] + glow[..., :3] * 0.75, 1.0)
+    ba = None
+    if dof > 0.5:
+        ba = _ablur(_rgba_rows(b_s), dof, dof, max(1, int(dof / 4)))
+        b_s = core.rgba_surface(ba)
+        oa = _ablur(oa, dof, dof, max(1, int(dof / 4)))
+    o_s = core.rgba_surface(oa)
+    # wet mask as A8 surface for ctx.mask_surface
+    wm = cairo.ImageSurface(cairo.FORMAT_A8, W, H)
+    st = wm.get_stride()
+    buf = np.ndarray((H, st), np.uint8, wm.get_data())
+    buf[:, :W] = (np.clip(wa * C["refl"], 0, 1) * 255 + 0.5).astype(np.uint8)
+    wm.mark_dirty()
+    sky_vis = bool((_rgba_rows(b_s)[..., 3] < 0.99).any()) if ba is None else bool((ba[..., 3] < 0.99).any())
+    return dict(back=b_s, mirror=m_s, wet=wm, over=o_s, y0=y0, sky=sky_vis)
+
+
+def _shop_layers(weather, cam, dof):
+    wq = int(round(clamp(weather) * 100))
+    ck = _camkey(cam)
+    dk = round(dof * 2) / 2
+    return _SHOP_CACHE.get((wq, ck, dk), lambda: _shop_build(wq, ck, dk))
+
+
+def draw_shopfront(ctx, t, weather, cam=CAM_ID, sky=True, dof=0.0, rainbow=0.0, rainbow_center=None,
+                   rainbow_radius=None, ripples=True):
+    """Ground-level view of the closed dagashi shop 「ねこや」 (s02–s06), everything BEHIND the
+    characters: sky (visible over the side street on the right / when tilting up), facade, awning,
+    props, dry patch, wet pavement with rippling reflections.  Then draw characters, then e.g.
+    draw_shopfront_fg (drips + splashes) and draw_rain.
+    dof: background blur radius px for close-ups (cached per cam).  rainbow 0..1."""
+    C = palette(weather)
+    Ls = _shop_layers(weather, cam, dof)
+    hz = to_screen(0, SHOP_HORIZON_Y, cam)[1]
+    rc = to_screen(*(rainbow_center or SHOP_RAINBOW[0]), cam)
+    rr = (rainbow_radius or SHOP_RAINBOW[1]) * cam[2]
+    if sky and Ls["sky"]:
+        draw_sky(ctx, t, weather, cam, horizon_y=SHOP_HORIZON_Y, depth=1.0)
+        if rainbow > 0:
+            draw_rainbow(ctx, t, rainbow, rc, rr)
+    ctx.set_source_surface(Ls["back"], 0, 0)
+    ctx.paint()
+    # reflection
+    y0 = Ls["y0"]
+    if y0 < H:
+        ctx.save()
+        ctx.rectangle(0, y0, W, H - y0)
+        ctx.clip()
+        ctx.push_group()
+        if hz < H:
+            arr = sky_array(t, weather, cam, SHOP_HORIZON_Y, 1.0)
+            _paint_small(ctx, arr, flip_axis=hz)
+            if rainbow > 0:
+                ctx.save()
+                ctx.translate(0, 2 * hz)
+                ctx.scale(1, -1)
+                draw_rainbow(ctx, t, rainbow, rc, rr, alpha=0.4)
+                ctx.restore()
+        amp = 5.0 * C["ripple"] * cam[2] if ripples else 0.0
+        y = float(y0)
+        strip = 3
+        mir = Ls["mirror"]
+        while y < H:
+            dk = clamp((y - hz) / (H - hz + 1e-6))
+            dx = amp * (0.3 + dk) * (0.6 * noise1(y * 0.09 / cam[2] + t * 8.0, 7) + 0.4 * math.sin(y * 0.3 / cam[2] - t * 5.0))
+            ctx.save()
+            ctx.rectangle(0, y, W, strip)
+            ctx.clip()
+            ctx.set_source_surface(mir, dx, 0)
+            ctx.paint()
+            ctx.restore()
+            y += strip
+        ctx.pop_group_to_source()
+        ctx.mask_surface(Ls["wet"], 0, 0)
+        ctx.restore()
+    # puddles: deeper, clearer water tinted by the sky (blue after the rain)
+    ctx.save()
+    _apply_cam(ctx, cam)
+    for (X, Z, rx, rz, seed) in _SHOP_PUDDLES:
+        _SP.poly(ctx, _puddle_poly(_SP, X, Z, rx, rz, seed))
+        y0_ = _SP(X, 0, Z + rz)[1]
+        y1_ = _SP(X, 0, Z - rz)[1]
+        g = cairo.LinearGradient(0, y0_, 0, y1_)
+        g.add_color_stop_rgba(0, *C["sky_refl"], 0.10 + 0.30 * C["sunk"])
+        g.add_color_stop_rgba(1, *C["sky_refl"], 0.0 + 0.12 * C["sunk"])
+        ctx.set_source(g)
+        ctx.fill()
+    ctx.restore()
+    ctx.set_source_surface(Ls["over"], 0, 0)
+    ctx.paint()
+
+
+def draw_shopfront_fg(ctx, t, weather, cam=CAM_ID, drips=True, splashes=True, glints=True, seed=3):
+    """Things IN FRONT of the characters: the drip curtain from the awning (with splashes on the
+    drip line), rain splashes on the wet pavement, after-rain glints."""
+    C = palette(weather)
+    z = cam[2]
+    if splashes and C["rain_amt"] > 0:
+        x0, y0 = to_screen(-200, DRIP_GROUND_Y + 12, cam)
+        x1, y1 = to_screen(2200, H, cam)
+        draw_splashes(ctx, t, weather, (x0, y0, x1, max(y0 + 1, min(H + 40, y1 + 40))), seed=seed,
+                      horizon_y=to_screen(0, SHOP_HORIZON_Y, cam)[1], scale=1.2 * z)
+        # side street
+        poly = [to_screen(*p, cam) for p in ((SIDE_STREET_X + 20, 560), (1700, 560), (2400, 1100), (1600, 1100))]
+        draw_splashes(ctx, t, weather, poly, seed=seed + 1, horizon_y=to_screen(0, SHOP_HORIZON_Y, cam)[1], scale=1.0 * z)
+    if drips:
+        pts = awning_drip_points(cam)
+        gy = to_screen(0, DRIP_GROUND_Y + 8, cam)[1]
+        pts = [(x, y, gy + 10 * _hash(5, i)) for i, (x, y) in enumerate(pts) if -40 < x < W + 40]
+        draw_drips_from(ctx, t, pts, weather=weather, size=4.2 * z, gravity=2700 * z, seed=seed + 7,
+                        period=(lerp(0.3, 1.0, C["weather"]), lerp(0.8, 2.2, C["weather"])), alpha=0.8)
+        if C["rain_amt"] > 0.15:
+            # a few heavier streams from the valance tips
+            for j, i in enumerate((5, 13, 19)):
+                if i < len(pts):
+                    x, y, _ = pts[i]
+                    draw_awning_drips(ctx, t, weather, x - 1, x + 1, y, ground_y=gy, spacing=100, seed=50 + j, size=4 * z)
+    if glints:
+        x0, y0 = to_screen(-100, DRIP_GROUND_Y + 15, cam)
+        x1, y1 = to_screen(2100, H, cam)
+        draw_glints(ctx, t, weather, (x0, y0, x1, y1), n=36, seed=seed + 2, size=18 * z,
+                    horizon_y=to_screen(0, SHOP_HORIZON_Y, cam)[1])
+
+
+def draw_ground_reflection(ctx, t, weather, draw_fn, cam=CAM_ID, axis_y=GROUND_Y, strength=0.75, blur=4.0):
+    """Reflect characters in the wet pavement: draw_fn(ctx2) draws them (screen coords) onto a
+    temporary layer, which is mirrored about the screen line of axis_y (world), blurred, rippled and
+    masked to the wet areas.  Call after draw_shopfront, before the characters themselves."""
+    C = palette(weather)
+    Ls = _shop_layers(weather, cam, 0.0)
+    s = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+    c2 = cairo.Context(s)
+    draw_fn(c2)
+    ay = to_screen(0, axis_y, cam)[1]
+    y0 = max(int(ay), Ls["y0"])
+    if y0 >= H:
+        return
+    # mirror rows [2ay - H, ay] -> [ay, H]
+    src0 = int(max(0, 2 * ay - H))
+    a = _rgba_rows(s, src0, int(ay) + 1)
+    a = a[::-1]
+    a = _ablur(a, blur * 2, blur * 0.6, 1) if blur > 0 else a
+    rs = _rows_to_surface(a[: H - int(ay)], H, int(ay))
+    ctx.save()
+    ctx.rectangle(0, y0, W, H - y0)
+    ctx.clip()
+    ctx.push_group()
+    amp = 4.0 * C["ripple"] * cam[2]
+    y = float(y0)
+    while y < H:
+        dx = amp * (0.6 * noise1(y * 0.09 + t * 8.0, 9) + 0.4 * math.sin(y * 0.3 - t * 5.0))
+        ctx.save()
+        ctx.rectangle(0, y, W, 3)
+        ctx.clip()
+        ctx.set_source_surface(rs, dx, 0)
+        ctx.paint_with_alpha(strength)
+        ctx.restore()
+        y += 3
+    ctx.pop_group_to_source()
+    ctx.mask_surface(Ls["wet"], 0, 0)
+    ctx.restore()
