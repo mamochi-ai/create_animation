@@ -160,7 +160,9 @@ def robo_pose(t, tg):
             p.update(face="surprised", look=(0, -1.2))
         else:
             p["face"] = "happy"
-        p["canopy"] = 1.0 - ease_in_out(seg(t, 2.6, 3.45))
+        cv = 1.0 - ease_in_out(seg(t, 2.6, 3.45))
+        # lib draw_robo raises KeyError('apex') while the pole is ~retracted (canopy < ~0.035)
+        p["canopy"] = cv if cv > 0.04 else 0.0
         # anticipation dip before folding, bounce when it clicks shut
         p["squash"] = 0.06 * smoothstep(2.35, 2.6, t) * (1 - seg(t, 2.6, 2.75)) \
             + 0.12 * damp_osc(t - 3.45, 2.6, 5.5)
