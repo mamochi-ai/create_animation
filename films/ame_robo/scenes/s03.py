@@ -213,15 +213,11 @@ def mina_pose(t):
         p["look"] = (0.6, 0.0)
         if t > 10.8:
             # wipe a laugh-tear, then curious/amazed toward Robo's glowing back
-            wipe = seg(t, 10.8, 11.2)
+            # wipe a laugh-tear (hand to face, eyes squeezed), then amazed
             p["expr"] = "happy" if t < 11.12 else "amazed"
-            p["arms"] = "rest"
-            hr = math.sin(wipe * math.pi)
-            if t < 11.2:
-                p["hand_r"] = (lerp(-34, -38, hr), lerp(14, 40, hr), lerp(-170, -368, hr))
-            p["eye_open"] = 0.55 if t < 11.12 else None
-            if p["eye_open"] is None:
-                p.pop("eye_open")
+            p["arms"] = "hands_to_mouth" if t < 11.1 else "hands_clasped"
+            if t < 11.12:
+                p["eye_open"] = 0.35
             p["look"] = (0.9, -0.1)
             p["body_lean"] = 0.03 + 0.07 * ease_out_back(seg(t, 11.12, 11.35))
             p["head_tilt"] = 0.08 * seg(t, 11.12, 11.4)
@@ -511,9 +507,9 @@ def render(t: float) -> np.ndarray:
     if t > 10.75:
         gl = smoothstep(10.9, 11.4, t) * (0.75 + 0.25 * math.sin(tg * 11))
         ch = ra["chest"]
-        bx = ch[0] + lerp(95, 118, smoothstep(10.85, 11.3, t)) * SR
-        y0, y1 = ch[1] - 30 * SR, ch[1] + 120 * SR
-        for wdt, al in ((16, 0.10), (8, 0.22), (3, 0.9)):
+        bx = ch[0] + lerp(78, 96, smoothstep(10.85, 11.3, t)) * SR
+        y0, y1 = ch[1] - 30 * SR, ch[1] + 115 * SR
+        for wdt, al in ((26, 0.08), (12, 0.2), (5, 0.45), (2.2, 1.0)):
             ctx.set_line_width(wdt * SR)
             ctx.set_source_rgba(0.55, 1.0, 0.95, al * gl)
             ctx.move_to(bx, y0)

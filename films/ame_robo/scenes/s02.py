@@ -80,7 +80,18 @@ def camera(t):
     u = ease_in_out((t - CUT_D) / (9.5 - CUT_D))
     cx, cy, z = lerp(978, 972, u), lerp(622, 608, u), lerp(1.36, 1.5, u)
     k = math.exp(-12 * max(0.0, t - HAKKEN)) * (t >= HAKKEN)
-    return (cx + hx * 0.8 + math.sin(t * 80) * 3 * k, cy + hy * 0.8, z), 2.0
+    return (cx + hx * 0.8 + math.sin(t * 80) * 3 * k, cy + hy * 0.8, z), 0.0
+
+
+_BASE = [(CUT_B, (870.0, 568.0, 1.08), 0.0), (CUT_C, (797.0, 575.0, 1.95), 11.0),
+         (CUT_D, (1010.0, 571.0, 1.02), 0.0), (99.0, (975.0, 615.0, 1.32), 0.0)]
+
+
+def base_cam(t):
+    for tend, c, d in _BASE:
+        if t < tend:
+            return c, d
+    return _BASE[-1][1], _BASE[-1][2]
 
 
 # ------------------------------------------------------------------ performance
@@ -475,18 +486,32 @@ def render(t: float) -> np.ndarray:
                          squash=rs["squash"], tread_phase=rs["tread_phase"], antenna_blink=rs["antenna_blink"],
                          wet=rs["wet"], t=tg, glow_only=glow_only, screen_glow=1.0)
 
-    def draw_chars(c, reflection=False):
+    def draw_chars(c, ccam):
         c.save()
-        world._apply_cam(c, cam)
+        world._apply_cam(c, ccam)
         draw_kitten(c, kx, ky, S, **kp)
         draw_mina(c, MX, GY, S, **mp)
         draw_robo_at(c)
         c.restore()
 
-    surf, ctx = _new()
-    world.draw_shopfront(ctx, tg, WEATHER, cam, dof=dof)
+    # background (shopfront + character reflections) is rendered at a fixed per-shot base cam, so the
+    # expensive shop layers are built once per shot, then re-projected exactly to the moving cam.
+    bcam, bdof = base_cam(t)
+    bsurf, bctx = _new()
+    world.draw_shopfront(bctx, tg, WEATHER, bcam, dof=bdof)
     if not close:
-        world.draw_ground_reflection(ctx, tg, WEATHER, lambda c: draw_chars(c, True), cam)
+        world.draw_ground_reflection(bctx, tg, WEATHER, lambda c: draw_chars(c, bcam), bcam)
+    surf, ctx = _new()
+    ctx.save()
+    ctx.translate(960, 540)
+    ctx.scale(cam[2], cam[2])
+    ctx.translate(bcam[0] - cam[0], bcam[1] - cam[1])
+    ctx.scale(1 / bcam[2], 1 / bcam[2])
+    ctx.translate(-960, -540)
+    ctx.set_source_surface(bsurf, 0, 0)
+    ctx.get_source().set_filter(cairo.FILTER_BILINEAR)
+    ctx.paint()
+    ctx.restore()
     world.draw_rain(ctx, tg, WEATHER, "bg", cam, dof=rd)
 
     # characters

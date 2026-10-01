@@ -229,14 +229,14 @@ def shot_a(t):
     """Extreme low angle hero intro, scan flash."""
     s, ctx = core.new_surface()
     u = t / 0.95
-    sc = lerp(2.55, 2.95, ease_in_out(u))
+    sc = lerp(3.3, 3.75, ease_in_out(u))
     ctx.save()
     ctx.translate(960, 540)
     ctx.rotate(-0.13 + 0.03 * u)
     ctx.translate(-960, -540)
     speed_lines(ctx, t, (980, 260), "#2C7F8F", "#0B1B2E", n=90, seed=1, alpha=0.5)
     frozen_rain(ctx, t, n=90, seed=4, alpha=0.35)
-    rx, ry = 1010, 1080 + 330 * sc * 0.55
+    rx, ry = 1000, 560 + 300 * sc
     face = "scan" if t > 0.08 else "surprised"
     pose = dict(view="three_quarter_left", face=face, screen_glow=1.0, t=T0 + t, antenna_blink=1.0,
                 arms="rest", wet=0.25, bob=-6 * math.sin(min(1, t / 0.2) * math.pi), rim="#9FF7FF")
@@ -279,6 +279,8 @@ def shot_b(t):
     parallel_lines(ctx, u, -0.25, "#1F6577", "#0D2135", n=55, seed=5, speed=2600, alpha=0.35)
     frozen_rain(ctx, t, n=60, seed=6, alpha=0.3, length=(50, 120))
     can = 0.1 * ease_out(clamp(u / 0.22), 4) + 0.035 * smoothstep(0.22, 0.475, u)
+    if 0 < can < 0.021:      # lib bug: _draw_canopy returns no 'apex' for 0 < canopy < 0.02 -> KeyError
+        can = 0.021
     # panel base is at local (f=-64, v=-176): with side_left view, the back is to screen-right
     rx = 720 + dx - 60 * u
     ry = 1430 + dy
@@ -595,7 +597,7 @@ def shot_live(t, frame):
 
     if not G:
         world.draw_ground_reflection(ctx, tg, WEATHER, lambda c: chars(c, True), cam)
-    world.draw_rain(ctx, tg, WEATHER, "bg", cam)
+    world.draw_rain(ctx, tg, WEATHER, "bg", cam, density=0.5 if G else 1.0)
     # canopy (and pole) behind the characters
     ctx.save()
     world._apply_cam(ctx, cam)
@@ -619,11 +621,11 @@ def shot_live(t, frame):
         rs = world.to_screen(rx, YS, cam)
         z = cam[2]
         reg = (max(sx1, rs[0] - 190 * z), rs[1] - 520 * z, rs[0] + 190 * z, rs[1])
-        world.draw_rain(ctx, tg, WEATHER, "mid", cam, region=reg, density=1.4, seed=5)
+        world.draw_rain(ctx, tg, WEATHER, "mid", cam, region=reg, density=2.2, seed=5, color="#F4FAFF")
     ctx.save()
     world._apply_cam(ctx, cam)
     if rad > 0:
-        k = clamp((t - 3.85) / 0.3)
+        k = clamp((t - 3.85) / 0.3) * (0.35 if G else 1.0)
         world.draw_canopy_rain(ctx, tg, center, rad, WEATHER, ground_y=YS + 20, intensity=k, seed=21)
         draw_rim_drips(ctx, ca.get("canopy_rim_points", []), tg, SC, seed=2, amount=k,
                        fall=(YS - center[1]) / SC)
@@ -636,6 +638,18 @@ def shot_live(t, frame):
                                   ht[1] + 4, period=(0.25, 0.5), size=4, weather=WEATHER, seed=8, rate=2.0) \
                 if hasattr(world, "draw_drips_from") else None
             _head_splashes(ctx, tg, ht, SC)
+        if t >= SPARK_T:
+            sa = sparks_amt(t)
+            pts = [ra.get("head"), ra.get("chest"), ra.get("tread_l"), ra.get("hand_r"), ra.get("antenna")]
+            for i, q in enumerate(pts):
+                if q is not None and _h(int(t * 16), i, 55) < 0.35 + 0.4 * sa:
+                    spark_burst(ctx, q[0] + (_h(int(t * 16), i, 56) - 0.5) * 80 * SC,
+                                q[1] + (_h(int(t * 16), i, 57) - 0.5) * 60 * SC, SC * 0.9, sa,
+                                seed=int(t * 16) + i, n=5)
+        rim = ca.get("canopy_rim_points", [])
+        if rim and t >= 3.95:
+            _rim_waterfall(ctx, tg, max(rim, key=lambda q: q[0]), ra["head_top"], SC,
+                           clamp((t - 3.95) / 0.4))
     ctx.restore()
     world.draw_shopfront_fg(ctx, tg, WEATHER, cam)
     for r in regions:
@@ -659,7 +673,7 @@ def shot_live(t, frame):
     if 6.5 <= t < 6.6:
         flash(ctx, 0.25)
     if SPARK_T <= t < SPARK_T + 0.09:
-        flash(ctx, 0.35, "#FFF6C0")
+        flash(ctx, 0.12, "#FFF6C0")
     return s, cam, rx, rpose
 
 
@@ -686,6 +700,42 @@ def _head_splashes(ctx, tg, ht, s):
             _sc(ctx, "#EAF6FF", 0.8 * (1 - k))
             ctx.stroke()
             draw_droplet(ctx, x + 10 * s * k, y - 20 * s * math.sin(k * math.pi), 2.4 * s, 0.8 * (1 - k))
+
+
+def _rim_waterfall(ctx, tg, p, ht, s, k):
+    """The gag: the canopy's rim pours a steady stream straight onto Robo's head."""
+    x0, y0 = p
+    y1 = ht[1] + 6 * s
+    ctx.save()
+    ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+    for j in range(5):
+        off = (j - 2) * 5 * s
+        ctx.move_to(x0 + off, y0)
+        n = 10
+        for i in range(1, n + 1):
+            q = i / n
+            wob = 3 * s * math.sin(tg * 23 + j * 1.7 + q * 9) * q
+            ctx.line_to(x0 + off * (1 + 0.8 * q) + wob, lerp(y0, y1, q))
+        ctx.set_line_width((9.0 if j == 2 else 4.5) * s)
+        _sc(ctx, "#F2FAFF", (0.8 if j == 2 else 0.5) * k)
+        ctx.stroke()
+    # splash crown on the head
+    for i in range(9):
+        per = 0.18 + 0.1 * _h(i, 41)
+        u = ((tg + _h(i, 42) * per) % per) / per
+        a = math.pi * (1.1 + 0.8 * _h(i, 43, int(tg / per)))
+        d = 55 * s * u
+        x = x0 + math.cos(a) * d
+        y = y1 + math.sin(a) * d * 0.9 + 60 * s * u * u
+        draw_droplet(ctx, x, y, 3.2 * s * (1 - 0.5 * u), 0.85 * k * (1 - u))
+    # water sheeting down his face/body from the impact point
+    for j in range(3):
+        ctx.move_to(x0 + (j - 1) * 14 * s, y1)
+        ctx.line_to(x0 + (j - 1) * 18 * s + 3 * s * math.sin(tg * 9 + j), y1 + 150 * s)
+        ctx.set_line_width(3.0 * s)
+        _sc(ctx, "#DFF1FF", 0.25 * k)
+        ctx.stroke()
+    ctx.restore()
 
 
 def glitch_frame(img, t):
@@ -718,7 +768,7 @@ def render(t: float) -> np.ndarray:
         s, cam, rx, rpose = shot_live(t, frame)
         thr, st = 0.74, 0.5
         if t >= SPARK_T:   # spark flashes bloom harder
-            thr, st = 0.7, 0.5 + 0.4 * sparks_amt(t)
+            thr, st = 0.72, 0.5 + 0.15 * sparks_amt(t)
     img = core.surface_rgba(s)
     img = post(img, frame, thr, st, vig=0.36 if t < 3.8 else 0.32)
     if SPARK_T + 0.02 <= t < SPARK_T + 0.09 or (9.1 <= t < 9.14):

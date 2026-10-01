@@ -32,7 +32,7 @@ GY = 975.0
 S = world.shop_scale(GY)
 MX0 = 820.0                       # Mina's spot under the canopy (s04)
 RX = MX0 + 300 * S                # Robo
-MX1 = RX - 110 * S                # Mina beside Robo, holding the roof
+MX1 = RX - 170 * S                # Mina beside Robo, holding the roof
 KX0 = MX0 - 70 * S                # kitten at Mina's feet
 KX1 = RX - 66 * S                 # kitten at Robo's tread
 CAN_OFF = (560.0, 0.0)            # canopy pushed a bit further over Mina: Robo is fully in the rain
@@ -124,7 +124,7 @@ def camera(t):
     if t < 8.5:          # D
         u = ramp(t, 6.0, 8.5, lambda x: x)
         cx = lerp(1105, 1122, u) + 2 * noise1(t * 0.8, 8)
-        cy = lerp(640, 612, u) + 2 * noise1(t * 0.7, 9)
+        cy = lerp(665, 648, u) + 2 * noise1(t * 0.7, 9)
         z = 1.42 + 0.16 * ease_in_out(u)
         return (cx, cy, z), "D"
     u = ramp(t, 8.5, 11.0)                                            # E
@@ -132,6 +132,40 @@ def camera(t):
     cy = lerp(545, 600, u)
     z = 0.93 + 0.17 * u
     return (cx, cy, z), "E"
+
+
+SHOT_RANGES = {"A": (0.0, 3.6), "B": (3.6, 4.5), "C": (4.5, 6.0), "D": (6.0, 8.5), "E": (8.5, 11.0)}
+_MASTER = {}
+
+
+def master_cam(shot):
+    """One fixed background camera per shot covering every frame's view (the shop plates are
+    expensive to rebuild per cam, so each frame re-frames this plate with a 2D transform)."""
+    if shot not in _MASTER:
+        a, b = SHOT_RANGES[shot]
+        n = int(round((b - a) * FPS))
+        x0 = y0 = 1e9
+        x1 = y1 = -1e9
+        zmin = 1e9
+        for i in range(n + 1):
+            c, _ = camera(min(b - 1e-4, a + i / FPS))
+            hw, hh = 960 / c[2], 540 / c[2]
+            x0, x1 = min(x0, c[0] - hw), max(x1, c[0] + hw)
+            y0, y1 = min(y0, c[1] - hh), max(y1, c[1] + hh)
+            zmin = min(zmin, c[2])
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        z = min(zmin, 1920 / (x1 - x0 + 8), 1080 / (y1 - y0 + 8))
+        _MASTER[shot] = (round(cx, 1), round(cy, 1), round(z, 4))
+    return _MASTER[shot]
+
+
+def plate_xform(ctx, cam, mcam):
+    """Map master-cam screen space onto the current cam's screen space."""
+    cx, cy, z = cam
+    mx, my, mz = mcam
+    ctx.translate(960 + (mx - cx) * z, 540 + (my - cy) * z)
+    ctx.scale(z / mz, z / mz)
+    ctx.translate(-960, -540)
 
 
 # ------------------------------------------------------------------ character states
@@ -142,7 +176,7 @@ def robo_pose(t):
     sp = core.mouth("robo", T0 + th)[0]
     if 0.6 <= t <= 3.5 and g > 0.6:
         sp *= 0.3 + 0.7 * _h(int(t * FPS), 2.2)      # stutter chops the waveform
-    p = dict(view="three_quarter_left", canopy=1.0, canopy_offset=CAN_OFF, wet=1.0, t=th,
+    p = dict(yaw=lerp(-0.62, -0.2, ramp(t, 6.05, 6.7)), canopy=1.0, canopy_offset=CAN_OFF, wet=1.0, t=th,
              speak=sp, arms="rest", seed=7)
     # face
     f = int(round(t * FPS))
@@ -257,8 +291,8 @@ def mina_state(t):
         bounce += -0.05 * abs(step) * (1 if t < 5.5 else 0)
         # arc of the box: from behind her shoulder up over her head and over to Robo
         p0 = (x - 60 * S, GY - 300 * S)
-        p1 = (x - 40 * S, GY - 640 * S)
-        p2 = (ht[0] - 40 * S, ht[1] - 160 * S)
+        p1 = (x - 30 * S, GY - 590 * S)
+        p2 = (ht[0] - 70 * S, ht[1] - 90 * S)
         p3 = ht
         a = 1 - ue
         bx = a ** 3 * p0[0] + 3 * a * a * ue * p1[0] + 3 * a * ue * ue * p2[0] + ue ** 3 * p3[0]
@@ -382,10 +416,10 @@ def draw_whoosh(ctx, t, x_of, sc):
     fade = 1 - smoothstep(5.4, 5.55, t)
     for j, (off, a, lw) in enumerate([(0, 0.55, 10), (-26, 0.35, 5), (24, 0.3, 4)]):
         pts = []
-        for k in range(18):
-            u = lerp(tail, head, k / 17)
+        for k in range(len(x_of)):
+            u = lerp(tail, head, k / (len(x_of) - 1))
             ue = ease_out(u, 2.4)
-            st = x_of(5.02 + u * 0.48)
+            st = _interp_path(x_of, u)
             if st is None:
                 continue
             pts.append((st[0] + off * sc * (1 - ue), st[1] + off * sc * 0.5))
@@ -400,9 +434,26 @@ def draw_whoosh(ctx, t, x_of, sc):
     ctx.restore()
 
 
+_DUMMY = cairo.ImageSurface(cairo.FORMAT_ARGB32, 4, 4)
+
+
 def _box_path(t):
-    x, st = mina_state(t)
-    return st.get("hold_target")
+    """Actual (reach-clamped) randoseru centres along the swing, sampled by drawing Mina off-screen."""
+    pts = []
+    for k in range(9):
+        tt = 5.02 + 0.48 * k / 8
+        x, st = mina_state(tt)
+        c = cairo.Context(_DUMMY)
+        a = draw_mina(c, x, GY, S, **st)
+        pts.append(a.get("randoseru_center"))
+    return pts
+
+
+def _interp_path(pts, u):
+    f = clamp(u) * (len(pts) - 1)
+    i = min(len(pts) - 2, int(f))
+    q = f - i
+    return (lerp(pts[i][0], pts[i + 1][0], q), lerp(pts[i][1], pts[i + 1][1], q))
 
 
 def canopy_shadow(ctx, cam, extra=None):
@@ -413,7 +464,8 @@ def canopy_shadow(ctx, cam, extra=None):
     ctx.move_to(CAN_CX - CAN_R - 30, CAN_CY - 10)
     ctx.curve_to(CAN_CX - CAN_R * 0.7, CAN_CY - 260, CAN_CX - 120, CAN_CY - 310, CAN_CX, CAN_CY - 320)
     ctx.curve_to(CAN_CX + 120, CAN_CY - 310, CAN_CX + CAN_R * 0.7, CAN_CY - 260, CAN_CX + CAN_R + 30, CAN_CY - 10)
-    ctx.line_to(CAN_CX + CAN_R - 10, GY + 400)
+    ctx.line_to(CAN_CX + CAN_R - 20, CAN_CY + 120)
+    ctx.line_to(CAN_CX + CAN_R - 90, GY + 400)
     ctx.line_to(CAN_CX - CAN_R + 10, GY + 400)
     ctx.close_path()
     if extra:
@@ -426,7 +478,7 @@ def canopy_shadow(ctx, cam, extra=None):
     ctx.restore()
 
 
-def blurred_layer(ctx, draw_fn, cam, k=4):
+def blurred_layer(ctx, draw_fn, cam, k=4, sigma=1.6):
     """Cheap defocus: draw at 1/k resolution, scale back up bilinearly."""
     s = cairo.ImageSurface(cairo.FORMAT_ARGB32, W // k, H // k)
     c = cairo.Context(s)
@@ -434,6 +486,12 @@ def blurred_layer(ctx, draw_fn, cam, k=4):
     world._apply_cam(c, cam)
     draw_fn(c)
     s.flush()
+    a = np.ndarray((H // k, W // k, 4), np.uint8, s.get_data(), strides=(s.get_stride(), 4, 1))
+    b = a.astype(np.float32)
+    for ch in range(4):
+        b[..., ch] = gaussian_filter(b[..., ch], sigma)
+    a[...] = np.clip(b + 0.5, 0, 255).astype(np.uint8)
+    s.mark_dirty()
     ctx.save()
     ctx.scale(k, k)
     ctx.set_source_surface(s, 0, 0)
@@ -553,7 +611,11 @@ def render(t: float) -> np.ndarray:
     kx, ky, kp = kitten_state(t)
 
     surf, ctx = core.new_surface()
-    world.draw_shopfront(ctx, tg, WEATHER, cam, dof=dof)
+    mcam = master_cam(shot)
+    ctx.save()
+    plate_xform(ctx, cam, mcam)
+    world.draw_shopfront(ctx, tg, WEATHER, mcam, dof=dof)
+    ctx.restore()
 
     anchors = {}
 
@@ -571,8 +633,11 @@ def render(t: float) -> np.ndarray:
             anchors["kitten"] = draw_kitten(c, kx, ky, S, t=tg, wet=0.6, blink=core.blink(tg, 23), **kp)
 
     if shot in ("C", "E"):
+        ctx.save()
+        plate_xform(ctx, cam, mcam)
         world.draw_ground_reflection(ctx, tg, WEATHER,
-                                     lambda c: (_with_cam(c, cam), draw_chars(c, True), c.restore()), cam)
+                                     lambda c: (_with_cam(c, mcam), draw_chars(c, True), c.restore()), mcam)
+        ctx.restore()
 
     world.draw_rain(ctx, tg, WEATHER, "bg", cam, density=dens, dof=dof / 20)
 
@@ -612,7 +677,8 @@ def render(t: float) -> np.ndarray:
             world.draw_drips_from(ctx, tg, [(x0 + 6 * S, by), (x1 - 6 * S, by), (x1 - 30 * S, by + 4 * S)],
                                   ground_y=GY, size=3.2 * S, weather=WEATHER, seed=17, splash=True)
     if shot == "C":
-        draw_whoosh(ctx, t, _box_path, S)
+        if 5.06 <= t < 5.55:
+            draw_whoosh(ctx, t, _box_path(t), S)
     ctx.restore()
 
     # ---- rain in front: drawn in a group so the canopy / roof shadow can be cut out
@@ -669,8 +735,8 @@ def render(t: float) -> np.ndarray:
         if t >= 7.6:
             spread = ease_out(clamp((t - 7.6) / 1.6), 2)
             hum = 1 + 0.06 * math.sin(tg * 7) * ramp(t, 8.4, 9.0)
-            amt = (0.25 + 0.3 * spread) * hum
-            img = warm_light(img, sx, sy + sh * 0.6, (180 + 520 * spread) * zoom * 0.8, amt)
+            amt = (0.32 + 0.28 * spread) * hum
+            img = warm_light(img, sx, sy + sh * 0.6, (170 + 360 * spread) * zoom * 0.8, amt)
         # sparks flash: brief global bloom kick
     flash = 0.0
     if t < 6.0 and g > 0.7 and shot == "A":

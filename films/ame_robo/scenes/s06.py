@@ -82,9 +82,9 @@ def camera(t):
         u = ease_in_out(seg(t, CUT_C, CUT_D))
         p = ease_in_out(seg(t, 6.5, 7.4))        # attention shifts to Robo
         cx = lerp(880, 975, p) + 10 * u
-        z = lerp(1.30, 1.36, u)
+        z = lerp(1.42, 1.48, u)
         dx, dy = _drift(t, 2.0, 4)
-        return (cx + dx, 655 + dy, z)
+        return (cx + dx, 712 + dy, z)
     u = ease_out(seg(t, CUT_D, 10.3), 2)
     return (lerp(1395, 1380, u), lerp(330, 345, u), lerp(0.74, 0.765, u))
 
@@ -108,7 +108,7 @@ def mina_pose(t, tg):
         else:
             p["expr"] = "happy"
         if t < 3.25:
-            k = ease_in_out(seg(t, 1.2, 3.15))
+            k = ease_in_out(seg(t, 1.3, 2.7))
             p["arms"] = "hold_randoseru_overhead"
             p["hold_target"] = None  # filled in by caller (needs Robo anchors)
             p["_lower"] = k
@@ -208,7 +208,7 @@ def kitten_pose(t, tg, robo_feet):
             return KX, FY, kw
         u = seg(t, 6.98, 7.32)
         if u < 1:
-            x = lerp(KX, tx, ease_in_out(u))
+            x = lerp(MX + 135 * SM, tx, ease_in_out(u))
             y = lerp(FY, ty, u) - 70 * SK * math.sin(u * math.pi)
             kw.update(pose="stand", expr="happy")
             return x, y, kw
@@ -283,8 +283,9 @@ def _under_canopy_mask(ctx, ra):
 def _end_card(size_q, dy_q):
     size = size_q
     cx, cy = 1460, 205 + dy_q
-    shadow = core.text_layer("おわり", (cx + 5, cy + 7), size=size, font="maru", color="#2A8C8C")
-    shadow = core.blur(shadow, 7)
+    shadow = core.text_layer("おわり", (cx + 6, cy + 9), size=size, font="maru", color="#1E7F82",
+                             stroke=6, stroke_color="#1E7F82")
+    shadow = core.blur(shadow, 9)
     glow = core.text_layer("おわり", (cx, cy), size=size, font="maru", color="#FFF6D8")
     txt = core.text_layer("おわり", (cx, cy), size=size, font="maru", color="#FFFFFF",
                           stroke=3, stroke_color="#FFFFFF")
@@ -302,7 +303,7 @@ def _comp_end_card(img, t):
     size = int(round(110 * s / 2) * 2)
     dy = int(round(-14 * (1 - ease_out(u))))
     shadow, glow, txt = _end_card(size, dy)
-    core.over(img, shadow, 0.55 * a)
+    core.over(img, shadow, 0.85 * a)
     core.add_glow(img, glow, radius=16, strength=0.45 * a)
     core.over(img, txt, a)
 
@@ -357,6 +358,8 @@ def _render_shop(t, tg, frame):
         mx, rx, fy, sm, sr, sk = MX_D, RX_D, FY_D, 0.92 * SD_D, 0.915 * SD_D, 0.95 * SD_D
     else:
         mx, rx, fy, sm, sr, sk = MX, RX, FY, SM, SR, SK
+        if t >= CUT_C:
+            rx = MX + 250 * SM
     rp_rim = C["char_rim"]
 
     def chars(c, reflect=False):
@@ -367,10 +370,14 @@ def _render_shop(t, tg, frame):
         low = mpp.pop("_lower", None)
         if mpp.get("arms") == "hold_randoseru_overhead":
             top = (ra["head_top"][0] - 8 * sr, ra["head_top"][1] - 62 * sm)
-            down = (mx + 95 * sm, fy - 300 * sm)
+            down = (mx + 25 * sm, fy - 575 * sm)
             k = low or 0.0
-            mpp["hold_target"] = (lerp(top[0], down[0], k), lerp(top[1], down[1], k))
+            # pull it back over her own hat, a little dip-and-lift, then it swings onto her back
+            mpp["hold_target"] = (lerp(top[0], down[0], k),
+                                  lerp(top[1], down[1], k) + 25 * sm * math.sin(k * math.pi))
         kx, ky, kkw = kitten_pose(t, tg, (rx, fy))
+        if CUT_C <= t < CUT_D and kx == KX:
+            kx = MX + 135 * SM
         if not (CUT_B <= t < CUT_D and t > 7.2):
             ka = draw_kitten(c, kx, ky, sk, **kkw)
         ma = draw_mina(c, mx, fy, sm, rim=rp_rim, **mpp)
@@ -426,6 +433,14 @@ def _render_shop(t, tg, frame):
             world.draw_drips_from(ctx, tg, pts, weather=max(w, 0.7), size=4.5 * sc, gravity=2600,
                                   seed=17, period=(0.6, 1.3), alpha=0.9 * (1 - seg(t, 2.6, 3.0)),
                                   sparkle=sun, rate=1.0)
+    if t < CUT_B and 3.18 < t < 3.45:
+        k = seg(t, 3.18, 3.45)
+        cx_, cy_ = mx - 10 * sm, fy - 400 * sm
+        for i, (wdt, al) in enumerate(((22, 0.18), (12, 0.35), (4, 0.7))):
+            ctx.set_line_width(wdt * sm)
+            ctx.set_source_rgba(1, 0.97, 0.9, al * (1 - k))
+            ctx.arc(cx_, cy_, 150 * sm, -1.7 + 1.4 * k, -0.4 + 1.6 * k)
+            ctx.stroke()
     # water beading on characters, glistening in the sun
     damp = 1.0 - 0.6 * seg(t, 2.0, 9.0)
     draw_drops_on(ctx, ma["drop_points"], tg, sm, seed=2, amount=0.75 * damp)
@@ -462,11 +477,11 @@ def _render_shop(t, tg, frame):
             sw = ease_in_out(seg(t, 1.9, 3.6))
             world.draw_sunbeams(ctx, tg, 1.6 * k, origin=(lerp(-700, -150, sw), -650), n=12,
                                 color="#FFF0C4", length=3200, spread=(0.55, 1.1), seed=31)
-        _warm_flood(ctx, sun * (0.8 + 0.6 * math.exp(-max(0, t - 2.0) * 2.5) * smoothstep(1.95, 2.05, t)))
+        _warm_flood(ctx, sun * (0.45 + 0.6 * math.exp(-max(0, t - 2.0) * 2.5) * smoothstep(1.95, 2.05, t)))
     else:
         world.draw_sunbeams(ctx, tg, 0.7, origin=(-300, -650), n=9, color="#FFF0C4", length=3200,
                             spread=(0.55, 1.1), seed=31)
-        _warm_flood(ctx, 0.8)
+        _warm_flood(ctx, 0.45)
 
     img = core.surface_rgba(surf)
     if final:
@@ -488,7 +503,7 @@ def _render_street(t, tg, frame):
     world.draw_glints(ctx, tg, w, poly, n=70, horizon_y=hz, size=18)
     world.draw_sunbeams(ctx, tg, 1.0, origin=(-400, -700), n=11, color="#FFF0C4", length=3600,
                         spread=(0.5, 1.1), seed=33)
-    _warm_flood(ctx, 0.7)
+    _warm_flood(ctx, 0.5)
     img = core.surface_rgba(surf)
     return _post(img, frame, threshold=0.8, radius=40, strength=0.5, vig=0.24, warm=1.0)
 
