@@ -28,3 +28,10 @@ Look at films/ame_robo/build/preview/model_sheet_*.png and world_*.png to see th
 3. Report concisely: what the scene shows beat by beat, render time per frame, and any issues/limitations.
 
 - Scratch files: use your own subfolder of the scratchpad (other animators share it).
+
+## Shared staging (continuity across scenes)
+- Shopfront world = screen at world.CAM_ID. Pavement ground y = 880 under the awning (dry patch 857–906), wet pavement in front (y > 906).
+- s02–s03: Mina shelters under the awning at x ≈ 760 (feet y 880), facing mostly front/right; the kitten sits at her feet on her left (x ≈ 650). Robo rolls in from the side street at the right (x > 1580) along y = 880 and stops at x ≈ 1180, facing left toward Mina.
+- s04 onward: Mina steps forward OUT from under the awning onto the wet pavement (feet y ≈ 960–990; use world.shop_scale(y_feet) for scale), under Robo's giant canopy which Robo holds over her from her right side (Robo x ≈ Mina x + 300·scale, facing left). Because the canopy covers her, Robo's own body is out in the rain (the gag). Kitten comes along and shelters under the canopy too.
+- Use characters' `wet` param: Mina slightly damp (0.3) at start, Robo increasingly soaked from s04 (→1.0 in s05), drying/sunlit in s06.
+- weather: 0 (heavy rain) through s01–s05; s06 goes 0 → 1 (rain stops ~49.5 global, sun 51+, rainbow).

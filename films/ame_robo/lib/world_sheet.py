@@ -21,12 +21,18 @@ from lib import world  # noqa: E402
 OUT = core.ROOT / "build" / "preview"
 
 
+_POST_T = [0.0]
+
+
 def post(s, frame=0, bloom=(0.74, 34, 0.5), vig=0.32):
+    t0 = time.time()
     img = core.surface_rgba(s)
     core.bloom(img, *bloom)
     core.vignette(img, vig)
     core.grain(img, frame)
-    return core.finish(img)
+    out = core.finish(img)
+    _POST_T[0] = time.time() - t0
+    return out
 
 
 def marker(ctx, cam, x=760, h=430, w=96, a=0.45):
@@ -69,6 +75,37 @@ def shop(weather, t, cam=world.CAM_ID, dof=0.0, rainbow=0.0, mark=True):
     return s
 
 
+def canopy_fx():
+    """s04 helper demo: water sheeting off a big umbrella (stand-in canopy drawn here)."""
+    import math
+    t = 2.0
+    cam = (900, 560, 1.15)
+    s, ctx = core.new_surface()
+    world.draw_shopfront(ctx, t, 0.0, cam)
+    cx, cy, r = 900, 330, 520
+    # stand-in teal/cream striped canopy (dome above the rim ellipse)
+    ctx.save()
+    n = 8
+    for k in range(n):
+        a0 = math.pi + k * math.pi / n
+        a1 = math.pi + (k + 1) * math.pi / n
+        ctx.move_to(cx, cy - 300)
+        ctx.line_to(cx + math.cos(a0) * r, cy + 40)
+        ctx.curve_to(cx + (math.cos(a0) + math.cos(a1)) * r * 0.5, cy + 70,
+                     cx + (math.cos(a0) + math.cos(a1)) * r * 0.5, cy + 70, cx + math.cos(a1) * r, cy + 40)
+        ctx.close_path()
+        ctx.set_source_rgb(*((0.27, 0.62, 0.6) if k % 2 == 0 else (0.95, 0.92, 0.84)))
+        ctx.fill()
+    ctx.restore()
+    marker(ctx, (960, 540, 1), x=cx, h=430)
+    world.draw_rain(ctx, t, 0.0, "bg", cam)
+    world.draw_rain(ctx, t, 0.0, "mid", cam)
+    world.draw_canopy_rain(ctx, t, (cx, cy + 40), r, 0.0, ry=40, ground_y=world.to_screen(0, world.GROUND_Y + 40, cam)[1])
+    world.draw_shopfront_fg(ctx, t, 0.0, cam, drips=False)
+    world.draw_rain(ctx, t, 0.0, "fg", cam)
+    return s
+
+
 def shots():
     # (a) s01: high-angle establishing street in heavy rain (+ the crane start framing)
     yield "s01_street_rain", lambda: post(street(0.0, 2.0, world.STREET_CAM_HIGH))
@@ -83,6 +120,7 @@ def shots():
     yield "shopfront_sunny", lambda: post(shop(1.0, 4.0, rainbow=1.0), bloom=(0.82, 40, 0.45))
     # (e) close framing for character close-ups (shallow depth of field)
     yield "closeup_rain", lambda: post(shop(0.0, 3.0, (760, 600, 1.9), dof=14.0))
+    yield "fx_canopy_rain", lambda: post(canopy_fx())
     yield "closeup_sunny", lambda: post(shop(1.0, 3.0, (1150, 600, 1.9), dof=14.0), bloom=(0.82, 40, 0.45))
 
 
@@ -99,7 +137,8 @@ def main():
         dt = time.time() - t1
         p = OUT / f"world_{name}.png"
         Image.fromarray(img).save(p)
-        print(f"{p}  first {t1 - t0:.1f}s, cached {dt * 1000:.0f} ms (incl. post)")
+        print(f"{p.name:34s} first {t1 - t0:5.1f}s | cached frame: draw {(dt - _POST_T[0]) * 1000:4.0f} ms"
+              f" + post {_POST_T[0] * 1000:4.0f} ms")
 
 
 if __name__ == "__main__":

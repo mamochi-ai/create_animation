@@ -731,6 +731,7 @@ def draw_splashes(ctx, t, weather, region=(0, 900, W, H), seed=2, density=1.0, h
     else:
         ss = np.full(xs.shape, float(scale))
     ctx.save()
+    ctx.set_tolerance(0.5)
     ctx.set_line_cap(cairo.LINE_CAP_ROUND)
     ps = age / life
     if rings:
@@ -756,24 +757,33 @@ def draw_splashes(ctx, t, weather, region=(0, 900, W, H), seed=2, density=1.0, h
             _set(ctx, col, 0.4 * (1 - pm) ** 1.5)
             ctx.stroke()
     if crowns:
-        sel = np.nonzero(ps < 0.42)[0]
-        for i in sel.tolist():
-            x, y, s = xs[i], ys[i], ss[i]
-            q = ps[i] / 0.42
-            hgt = 18 * s * math.sin(q * math.pi) * (0.7 + 0.6 * ev[i, 3])
-            spr = 11 * s * q ** 0.7
-            ctx.set_line_width(max(0.6, 1.3 * s))
-            _set(ctx, col, 0.38 * (1 - q))
-            for d in (-1, -0.45, 0.45, 1):
-                ctx.move_to(x + d * spr * 0.4, y)
-                ctx.curve_to(x + d * spr * 0.6, y - hgt * 0.8, x + d * spr, y - hgt,
-                             x + d * spr * 1.1, y - hgt * 0.6)
-            ctx.stroke()
-            for d in (-1, 1, -0.3, 0.3):
-                ctx.new_sub_path()
-                ctx.arc(x + d * spr * 1.25, y - hgt * (1.15 if abs(d) < 1 else 0.85) - 3 * s * q,
-                        max(0.7, 1.6 * s), 0, TAU)
-            ctx.fill()
+        sel = np.nonzero((ps < 0.42) & (ev[:, 4] < 0.6))[0]
+        if len(sel):
+            lw = max(0.6, 1.3 * float(np.median(ss[sel])))
+            for bkt in range(3):
+                sb = [i for i in sel.tolist() if min(2, int(ps[i] / 0.42 * 3)) == bkt]
+                if not sb:
+                    continue
+                q = (bkt + 0.5) / 3
+                for i in sb:
+                    x, y, s = xs[i], ys[i], ss[i]
+                    hgt = 18 * s * math.sin(q * math.pi) * (0.7 + 0.6 * ev[i, 3])
+                    spr = 11 * s * q ** 0.7
+                    for d in (-1, -0.4, 0.4, 1):
+                        ctx.move_to(x + d * spr * 0.4, y)
+                        ctx.curve_to(x + d * spr * 0.6, y - hgt * 0.8, x + d * spr, y - hgt,
+                                     x + d * spr * 1.1, y - hgt * 0.6)
+                ctx.set_line_width(lw)
+                _set(ctx, col, 0.38 * (1 - q))
+                ctx.stroke()
+                for i in sb:
+                    x, y, s = xs[i], ys[i], ss[i]
+                    hgt = 18 * s * math.sin(q * math.pi) * (0.7 + 0.6 * ev[i, 3])
+                    spr = 11 * s * q ** 0.7
+                    for d in (-1, 1):
+                        ctx.new_sub_path()
+                        ctx.arc(x + d * spr * 1.25, y - hgt * 0.9 - 3 * s * q, max(0.7, 1.5 * s), 0, TAU)
+                ctx.fill()
     ctx.restore()
 
 
@@ -1699,16 +1709,20 @@ def _draw_lamp(L, P, C, s, z, emit, banner_idx=0):
     _set(L, col)
     L.stroke()
     lx, ly = P(X - s * 0.85, 4.85, z)
-    r = max(1.5, 0.18 * sc)
-    L.save()
-    L.translate(lx, ly)
-    L.scale(1, 0.75)
-    L.arc(0, 0, r, 0, TAU)
-    L.restore()
-    lampc = mix(_shade(C, "#EDE6D6", "F", z), C["warm"], 0.8 * C["lamp"])
+    r = max(1.5, 0.2 * sc)
+    # shade (dark cap) + bulb underneath
+    L.move_to(lx - r * 0.35, ly - r * 0.55)
+    L.line_to(lx + r * 0.35, ly - r * 0.55)
+    L.line_to(lx + r, ly)
+    L.line_to(lx - r, ly)
+    L.close_path()
+    _set(L, _shade(C, "#3E464E", "F", z))
+    L.fill()
+    lampc = mix(_shade(C, "#D8D4CA", "F", z), mix(C["warm"], (1, 1, 1), 0.3), C["lamp"])
+    L.arc(lx, ly, r * 0.42, 0, math.pi)
     _set(L, lampc)
     L.fill()
-    emit.arc(lx, ly, r * 1.2, 0, TAU)
+    emit.arc(lx, ly + r * 0.2, r * 0.9, 0, TAU)
     _set(emit, C["warm"], 0.9 * C["lamp"])
     emit.fill()
     # banner flag (frontal) hanging from a small arm
@@ -2253,6 +2267,31 @@ def _street_drips(ctx, t, weather, cam):
                 pts.append((x, y, gy))
     sz = 2.6 * cam[2]
     draw_drips_from(ctx, t, pts, weather=weather, size=sz, gravity=2600 * cam[2], seed=33, alpha=0.7)
+    # beads hanging on the wires: drip off and sparkle once the sun is out
+    C = palette(weather)
+    poles, _, _ = _street_props()
+    wpts = []
+    for s in (-1, 1):
+        ps_ = [z for (ss, z) in poles if ss == s]
+        for a, b in zip(ps_[:-1], ps_[1:]):
+            if a > 45:
+                continue
+            for dx, dy, sag in ((-0.75, 9.78, 0.55), (0.0, 8.9, 0.75)):
+                X = s * 3.3 + dx
+                wp = _wire_pts((X, dy, a), (X, dy, b), sag, 12)
+                for k in (2, 4, 6, 8, 10):
+                    x, y = to_screen(*P(*wp[k]), cam)
+                    gx, gy = to_screen(*P(wp[k][0], 0, wp[k][2]), cam)
+                    if -20 < x < W + 20 and -20 < y < H:
+                        wpts.append((x, y + 1.5, gy))
+    draw_drips_from(ctx, t, wpts, weather=weather, size=2.0 * cam[2], gravity=2600 * cam[2], seed=71, alpha=0.75,
+                    period=(1.2, 3.5), splash=False)
+    if C["glints"] > 0.02:
+        for i, (x, y, _) in enumerate(wpts):
+            ph = (t * 0.7 + _hash(72, i)) % 1.0
+            tw = max(0.0, math.sin(ph * math.pi)) ** 8
+            if tw > 0.05:
+                draw_glint(ctx, x, y + 2, 9 * cam[2] * tw, C["glints"] * tw, C["glint"])
 
 
 # =========================================================================== shopfront (s02–s06)
@@ -3023,17 +3062,30 @@ def draw_shopfront(ctx, t, weather, cam=CAM_ID, sky=True, dof=0.0, rainbow=0.0, 
     ctx.restore()
     ctx.set_source_surface(Ls["over"], 0, 0)
     ctx.paint()
+    if C["sunk"] > 0.03:
+        ys = to_screen(0, DRIP_GROUND_Y, cam)[1]
+        g = cairo.LinearGradient(0, ys, 0, ys + 220 * cam[2])
+        g.add_color_stop_rgba(0, *C["sun"], 0.0)
+        g.add_color_stop_rgba(0.08, *C["sun"], 0.16 * C["sunk"])
+        g.add_color_stop_rgba(1, *C["sun"], 0.05 * C["sunk"])
+        ctx.rectangle(0, ys, W, H - ys)
+        ctx.set_source(g)
+        ctx.fill()
 
 
-def draw_shopfront_fg(ctx, t, weather, cam=CAM_ID, drips=True, splashes=True, glints=True, seed=3):
+def draw_shopfront_fg(ctx, t, weather, cam=CAM_ID, drips=True, splashes=True, glints=True, shafts=True,
+                      seed=3):
     """Things IN FRONT of the characters: the drip curtain from the awning (with splashes on the
-    drip line), rain splashes on the wet pavement, after-rain glints."""
+    drip line), rain splashes on the wet pavement, after-rain glints and soft sun shafts."""
     C = palette(weather)
     z = cam[2]
+    if shafts and C["sunk"] > 0.03:
+        draw_sunbeams(ctx, t, 2.0 * C["sunk"], origin=to_screen(-700, -1100, cam), n=9,
+                      spread=(0.62, 1.05), length=4800, seed=seed + 11)
     if splashes and C["rain_amt"] > 0:
         x0, y0 = to_screen(-200, DRIP_GROUND_Y + 12, cam)
         x1, y1 = to_screen(2200, H, cam)
-        draw_splashes(ctx, t, weather, (x0, y0, x1, max(y0 + 1, min(H + 40, y1 + 40))), seed=seed,
+        draw_splashes(ctx, t, weather, (x0, y0, x1, max(y0 + 1, min(H + 40, y1 + 40))), seed=seed, density=0.7,
                       horizon_y=to_screen(0, SHOP_HORIZON_Y, cam)[1], scale=1.2 * z)
         # side street
         poly = [to_screen(*p, cam) for p in ((SIDE_STREET_X + 20, 560), (1700, 560), (2400, 1100), (1600, 1100))]
@@ -3071,11 +3123,12 @@ def draw_ground_reflection(ctx, t, weather, draw_fn, cam=CAM_ID, axis_y=GROUND_Y
     if y0 >= H:
         return
     # mirror rows [2ay - H, ay] -> [ay, H]
-    src0 = int(max(0, 2 * ay - H))
-    a = _rgba_rows(s, src0, int(ay) + 1)
-    a = a[::-1]
-    a = _ablur(a, blur * 2, blur * 0.6, 1) if blur > 0 else a
-    rs = _rows_to_surface(a[: H - int(ay)], H, int(ay))
+    iay = int(ay)
+    src0 = int(max(0, 2 * iay - H))
+    a = _rgba_rows(s, src0, iay + 1)[::-1][: H - iay]
+    if blur > 0:
+        a = _ablur(np.ascontiguousarray(a), blur * 2, blur * 0.6, 2)
+    rs = core.rgba_surface(a)
     ctx.save()
     ctx.rectangle(0, y0, W, H - y0)
     ctx.clip()
@@ -3087,7 +3140,7 @@ def draw_ground_reflection(ctx, t, weather, draw_fn, cam=CAM_ID, axis_y=GROUND_Y
         ctx.save()
         ctx.rectangle(0, y, W, 3)
         ctx.clip()
-        ctx.set_source_surface(rs, dx, 0)
+        ctx.set_source_surface(rs, dx, iay)
         ctx.paint_with_alpha(strength)
         ctx.restore()
         y += 3
