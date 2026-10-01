@@ -22,7 +22,9 @@ except ImportError:  # pragma: no cover
 SR = 48000
 DUR = 60.0
 N = int(round(SR * DUR))
-ROOT = Path(__file__).resolve().parents[2]
+import os
+REPO = Path(__file__).resolve().parents[2]
+ROOT = Path(os.environ.get("FILM_DIR", REPO)).resolve()
 BUILD = ROOT / "build" / "audio"
 TWO_PI = 2.0 * np.pi
 

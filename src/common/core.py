@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import pathlib
 from functools import lru_cache
 
@@ -15,7 +16,9 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO = pathlib.Path(__file__).resolve().parents[2]
+# FILM_DIR selects which film (story/, assets/voice/, build/) we are working on; default = first film at repo root
+ROOT = pathlib.Path(os.environ.get("FILM_DIR", REPO)).resolve()
 TIMELINE = json.loads((ROOT / "story" / "timeline.json").read_text())
 W, H = TIMELINE["width"], TIMELINE["height"]
 FPS = TIMELINE["fps"]
@@ -299,9 +302,9 @@ def scene_bounds(scene_id):
 
 # ---------------------------------------------------------------- text
 FONTS = {
-    "maru": ROOT / "assets" / "fonts" / "ZenMaruGothic-Bold.ttf",
-    "maru_medium": ROOT / "assets" / "fonts" / "ZenMaruGothic-Medium.ttf",
-    "klee": ROOT / "assets" / "fonts" / "KleeOne-SemiBold.ttf",  # hand-written feel, good for titles
+    "maru": REPO / "assets" / "fonts" / "ZenMaruGothic-Bold.ttf",
+    "maru_medium": REPO / "assets" / "fonts" / "ZenMaruGothic-Medium.ttf",
+    "klee": REPO / "assets" / "fonts" / "KleeOne-SemiBold.ttf",  # hand-written feel, good for titles
 }
 
 

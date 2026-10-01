@@ -6,20 +6,28 @@ length of synth(labels[:k]) is exactly the onset of phoneme k."""
 import json, pathlib, numpy as np, scipy.io.wavfile as wav, pyopenjtalk
 from pyopenjtalk.htsengine import HTSEngine
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+import os
+ROOT = pathlib.Path(os.environ.get("FILM_DIR", pathlib.Path(__file__).resolve().parents[2])).resolve()
 VOICE_DIR = pathlib.Path("/opt/voices/htsvoice-tohoku-f01")
 OUT = ROOT / "assets" / "voice"
 LINES = json.loads((ROOT / "story" / "dialogue.json").read_text())
 
-CAST = {  # character -> (half_tone, speed, alpha)
-    "haru": (1.5, 1.0),
-    "kira": (8.0, 1.08),
+_cast_file = ROOT / "story" / "cast.json"
+# character -> (half_tone, speed[, voice]); voice "m001" = Open JTalk's bundled male voice
+CAST = json.loads(_cast_file.read_text()) if _cast_file.exists() else {
+    "haru": [1.5, 1.0],
+    "kira": [8.0, 1.08],
 }
 _engines = {}
+EXTRA_VOICES = {  # non-tohoku voices usable as a cast "style"
+    "m001": "/opt/voices/hts_voice_nitech_jp_atr503_m001-1.05/nitech_jp_atr503_m001.htsvoice",  # male
+    "mei": pyopenjtalk.DEFAULT_HTS_VOICE.decode() if isinstance(pyopenjtalk.DEFAULT_HTS_VOICE, bytes) else str(pyopenjtalk.DEFAULT_HTS_VOICE),
+}
 
 def engine(style):
     if style not in _engines:
-        _engines[style] = HTSEngine(str(VOICE_DIR / f"tohoku-f01-{style}.htsvoice").encode())
+        path = EXTRA_VOICES.get(style) or VOICE_DIR / f"tohoku-f01-{style}.htsvoice"
+        _engines[style] = HTSEngine(str(path).encode())
     return _engines[style]
 
 def synth(style, labels, half_tone, speed):
@@ -34,9 +42,13 @@ VOWEL = {"a": "a", "i": "i", "u": "u", "e": "e", "o": "o",
 
 def main():
     meta = []
+    OUT.mkdir(parents=True, exist_ok=True)
     for ln in LINES:
-        ht, sp = CAST[ln["who"]]
+        c = CAST[ln["who"]]
+        ht, sp = c[0], c[1]
         ht += ln.get("pitch", 0.0); sp *= ln.get("speed", 1.0)
+        if len(c) > 2:
+            ln = {**ln, "style": c[2]}
         labels = pyopenjtalk.extract_fullcontext(ln["text"])
         x, sr = synth(ln["style"], labels, ht, sp)
         # exact phoneme onsets

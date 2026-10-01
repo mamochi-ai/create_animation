@@ -11,8 +11,11 @@ from multiprocessing import Pool
 import numpy as np
 from PIL import Image
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+REPO = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(os.environ.get("FILM_DIR", REPO)).resolve()
+sys.path.insert(0, str(REPO / "src"))
+if ROOT != REPO:
+    sys.path.insert(0, str(ROOT))  # film-local `scenes` and `lib` packages win
 from common.core import FPS, scene_bounds  # noqa: E402
 
 _mod = None
@@ -20,7 +23,9 @@ _mod = None
 
 def _init(scene):
     global _mod
-    sys.path.insert(0, str(ROOT / "src"))
+    sys.path.insert(0, str(REPO / "src"))
+    if ROOT != REPO:
+        sys.path.insert(0, str(ROOT))
     _mod = importlib.import_module(f"scenes.{scene}")
 
 

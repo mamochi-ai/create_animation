@@ -1,0 +1,15 @@
+[
+ {"id": "l01_mina", "who": "mina", "style": "sad", "text": "あーあ……かさ、わすれちゃった。", "sub": "あーあ……傘、忘れちゃった。"},
+ {"id": "l02_robo", "who": "robo", "style": "m001", "text": "ピピッ。ぬれている、こどもを、はっけん。", "sub": "ピピッ。濡れている子どもを、発見。"},
+ {"id": "l03_mina", "who": "mina", "style": "neutral", "text": "え……ロボット？", "sub": "え……ロボット？"},
+ {"id": "l04_robo", "who": "robo", "style": "m001", "text": "かさ、てんかい。", "sub": "傘、展開。"},
+ {"id": "l05_mina", "who": "mina", "style": "happy", "text": "ちっちゃ！", "sub": "ちっちゃ！"},
+ {"id": "l06_robo", "who": "robo", "style": "m001", "text": "……さいけいさん。もんだい、なし。", "sub": "……再計算。問題、なし。"},
+ {"id": "l07_mina", "who": "mina", "style": "happy", "text": "すごーい！おっきい！", "sub": "すごーい！ おっきい！"},
+ {"id": "l08_mina", "who": "mina", "style": "sad", "text": "ロボさん、ぬれちゃってるよ！", "sub": "ロボさん、濡れちゃってるよ！"},
+ {"id": "l09_robo", "who": "robo", "style": "m001", "text": "ぼうすいきのう……ゼロ、です。", "sub": "防水機能……ゼロ、です。"},
+ {"id": "l10_mina", "who": "mina", "style": "angry", "text": "もう！", "sub": "もう！"},
+ {"id": "l11_robo", "who": "robo", "style": "m001", "text": "……あたたかい。", "sub": "……あたたかい。", "speed": 0.9},
+ {"id": "l12_mina", "who": "mina", "style": "happy", "text": "はれた！ありがとう、ロボさん！", "sub": "晴れた！ ありがとう、ロボさん！"},
+ {"id": "l13_robo", "who": "robo", "style": "m001", "text": "どういたしまして。ピピッ。", "sub": "どういたしまして。ピピッ。"}
+]

@@ -4,6 +4,7 @@
   python3 src/compose.py --nosubs   # clean version without burned-in subtitles
 """
 import argparse
+import os
 import json
 import pathlib
 import subprocess
@@ -12,8 +13,11 @@ import sys
 import numpy as np
 from PIL import Image
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+REPO = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(os.environ.get("FILM_DIR", REPO)).resolve()
+sys.path.insert(0, str(REPO / "src"))
+if ROOT != REPO:
+    sys.path.insert(0, str(ROOT))  # film-local `scenes` and `lib` packages win
 from common.core import FPS, H, TIMELINE, W, over, text_layer, smoothstep  # noqa: E402
 
 DISSOLVES = {("s04", "s05"): 12, ("s06", "s07"): 18}  # frames of cross-dissolve at the cut
@@ -66,7 +70,7 @@ def sub_layer(text, who):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--nosubs", action="store_true")
-    ap.add_argument("--out", default=str(ROOT / "output" / "hoshi_no_otoshimono.mp4"))
+    ap.add_argument("--out", default=str(REPO / "output" / (TIMELINE.get("output") or "hoshi_no_otoshimono.mp4")))
     a = ap.parse_args()
 
     seq = load_frames()
