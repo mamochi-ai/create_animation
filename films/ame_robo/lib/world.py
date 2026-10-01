@@ -464,8 +464,7 @@ def draw_sunbeams(ctx, t, strength=1.0, origin=(-300, -500), n=11, color="#FFF0C
     Rendered at 1/4 resolution (soft)."""
     if strength <= 0:
         return
-    _lowres(ctx, lambda c2: _sunbeams(c2, t, strength, origin, n, color, length, spread, seed), 4,
-            cairo.OPERATOR_ADD)
+    _lowres(ctx, lambda c2: _sunbeams(c2, t, strength, origin, n, color, length, spread, seed), 4)
 
 
 def _sunbeams(ctx, t, strength, origin, n, color, length, spread, seed):
@@ -1930,7 +1929,11 @@ def _street_plates(wkey):
     # ---- glow: blurred emitters (screen-blended at draw time)
     ea = _rgba_rows(e_s)
     glow = _ablur(ea, 26 * ps, 26 * ps, 6) * 1.0 + _ablur(ea, 7 * ps, 7 * ps, 2) * 0.5
-    glow_s = core.rgba_surface(np.clip(glow, 0, 1))
+    # bake glow additively into the front plate: premultiplied colour added with alpha untouched
+    # composites as  dst + glow  under OVER (saturating).
+    fa = _rgba_rows(f_s)
+    fa[..., :3] = np.minimum(fa[..., :3] + glow[..., :3], 1.0)
+    f_s = core.rgba_surface(fa)
 
     # ---- reflection: mirrored scene (+ mirrored emitters), vertical smear, puddles sharper
     r_s, r = _plate_surface(rect, ps)
@@ -1965,7 +1968,7 @@ def _street_plates(wkey):
         P.poly(g, _puddle_poly(P, X, Z, rx, rz, k))
         _set(g, C["shadow"], 0.3)
         g.fill()
-    return dict(ground=g_s, refl=refl_s, front=f_s, near=n_s, glow=glow_s)
+    return dict(ground=g_s, refl=refl_s, front=f_s, near=n_s)
 
 
 def _street_layers(wkey):
@@ -2179,12 +2182,6 @@ def draw_street(ctx, t, weather, cam=STREET_CAM_HIGH, sky=True, passersby=True, 
         _paint_plate(ctx, Ls["front"], cam, rect, ps, 1.0 if i == 0 else a)
     if passersby:
         draw_passersby(ctx, t, weather, cam)
-    # ---- light glow (screen)
-    ctx.save()
-    ctx.set_operator(cairo.OPERATOR_ADD)
-    for Ls, a in layers:
-        _paint_plate(ctx, Ls["glow"], cam, rect, ps, a)
-    ctx.restore()
     # ---- drips from awnings (a few, near ones)
     if drips:
         _street_drips(ctx, t, weather, cam)
