@@ -2307,6 +2307,7 @@ def _draw_canopy(ctx, base, p, offset, tilt, t, wet, lw, mirror_ls, glint=True):
     n = 26
     curve = [_bez(P0, P1, P2, P3, ext * i / n) for i in range(n + 1)]
     apex = curve[-1]
+    out["apex"] = apex  # set early: some branches below return before the end
     tang = _norm(_sub(curve[-1], curve[-2])) if ext > 0.01 else (0.0, -1.0)
     # pole: 3 telescoping sections
     if ext > 0.005:
