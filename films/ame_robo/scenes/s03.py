@@ -217,9 +217,8 @@ def mina_pose(t):
             p["expr"] = "happy" if t < 11.12 else "amazed"
             p["arms"] = "rest"
             hr = math.sin(wipe * math.pi)
-            p["hand_l"] = (lerp(22, 12, hr), lerp(18, 34, hr), lerp(-150, -372, hr)) if t < 11.2 else None
-            if p["hand_l"] is None:
-                p.pop("hand_l")
+            if t < 11.2:
+                p["hand_r"] = (lerp(-34, -38, hr), lerp(14, 40, hr), lerp(-170, -368, hr))
             p["eye_open"] = 0.55 if t < 11.12 else None
             if p["eye_open"] is None:
                 p.pop("eye_open")
@@ -283,14 +282,14 @@ def camera(t):
         dx += sh * math.sin(t * 83)
         dy += sh * math.cos(t * 97)
     elif s == "C":
-        cx, cy = UMB[0] + 15, UMB[1] + 85
-        z = 3.1 + 0.08 * math.exp(-u * 9) * 0 + 0.04 * u
+        cx, cy = UMB[0] + 10, UMB[1] + 50
+        z = 3.5 + 0.12 * u
         dof = 18
         k = math.exp(-u * 14) * 14
         dx += k * math.sin(u * 120)
         dy += k * math.cos(u * 140)
     elif s == "D":
-        cx, cy, z = lerp(745, 750, u / 1.6), lerp(610, 600, u / 1.6), lerp(1.85, 1.9, u / 1.6)
+        cx, cy, z = lerp(790, 785, u / 1.6), lerp(622, 615, u / 1.6), lerp(2.25, 2.32, u / 1.6)
         dof = 8
         if t > 6.1:   # laugh: camera bounces with her a touch
             dy += 3 * math.sin((t - 6.1) * 2 * math.pi * 1.6)
@@ -487,8 +486,8 @@ def render(t: float) -> np.ndarray:
     # laugh tear at Mina's eye
     if 6.6 < t < 11.05:
         eye = ma["eyes"][0] if ma["eyes"] else ma["face"]
-        ex = max(e[0] for e in ma["eyes"]) if ma["eyes"] else eye[0]
-        ey = ma["eyes"][0][1]
+        el = min(ma["eyes"], key=lambda e: e[0])
+        ex, ey = el[0] - 26 * SM, el[1]
         grow = smoothstep(6.6, 7.2, t) * (1 - smoothstep(10.9, 11.05, t))
         draw_droplet(ctx, ex + 14 * SM, ey + 6 * SM, 5.5 * SM * grow, 0.9, 1.15)
     # determined glint on Robo's screen corner (G)
@@ -512,7 +511,7 @@ def render(t: float) -> np.ndarray:
     if t > 10.75:
         gl = smoothstep(10.9, 11.4, t) * (0.75 + 0.25 * math.sin(tg * 11))
         ch = ra["chest"]
-        bx = ch[0] + 70 * SR
+        bx = ch[0] + lerp(95, 118, smoothstep(10.85, 11.3, t)) * SR
         y0, y1 = ch[1] - 30 * SR, ch[1] + 120 * SR
         for wdt, al in ((16, 0.10), (8, 0.22), (3, 0.9)):
             ctx.set_line_width(wdt * SR)

@@ -64,7 +64,7 @@ def camera(t):
         return (cx + hx, cy + hy, z), 0.0
     if t < CUT_C:
         u = ease_in_out((t - CUT_B) / (CUT_C - CUT_B))
-        cx, cy, z = lerp(772, 776, u), lerp(612, 590, u), lerp(1.72, 1.92, u)
+        cx, cy, z = lerp(790, 800, u), lerp(585, 560, u), lerp(2.05, 2.3, u)
         # impact shake when the drip hits
         k = math.exp(-10 * max(0.0, t - HIT_T)) * (t >= HIT_T)
         sx = math.sin(t * 95) * 5 * k
@@ -87,7 +87,7 @@ def camera(t):
 def mina_pose(t, tg):
     o, v, talking = core.mouth("mina", tg)
     bl = core.blink(tg, seed=21)
-    p = dict(view="three_quarter_right", expr="sad", mouth_open=o, vowel=v, blink=bl, look=(0.35, -0.1),
+    p = dict(yaw=0.5, expr="sad", mouth_open=o, vowel=v, blink=bl, look=(0.35, -0.1),
              head_tilt=0.0, head_turn=0.0, head_pitch=0.0, body_lean=0.0, bounce=0.0, crouch=0.0,
              wet=0.3, wind=0.35, wind_dir=-1, t=tg, arms="rest", light="left")
     if t < CUT_B:
@@ -112,6 +112,7 @@ def mina_pose(t, tg):
         p["eye_open"] = lerp(0.62, 0.92, up)
         p["body_lean"] = 0.03 * sag
         p["breathe"] = 1.0 + 1.5 * sag
+        p["yaw"] = 0.38
         if t >= HIT_T:
             d = t - HIT_T
             p["bounce"] = 0.35 * _damp(d, 3.2, 6.5)
@@ -130,6 +131,7 @@ def mina_pose(t, tg):
             d = t - 4.6
             s = ease_out_back(clamp(d / 0.14), 2.4)
             p["expr"] = "surprised"
+            p["yaw"] = lerp(0.38, 0.72, ease_out(clamp((d - 0.06) / 0.25)))
             p["head_turn"] = 0.42 * s
             p["look"] = (1.0, -0.05)
             p["head_pitch"] = 0.05
@@ -139,6 +141,7 @@ def mina_pose(t, tg):
         return p
     if t < CUT_D:
         p["expr"] = "surprised"
+        p["yaw"] = 0.75
         p["head_turn"] = 0.3
         follow = clamp((t - 4.9) / 0.4)
         p["look"] = (1.0, lerp(-0.05, 0.1, follow))
@@ -153,6 +156,7 @@ def mina_pose(t, tg):
     lean = smoothstep(6.5, 7.0, t)
     hug = smoothstep(6.6, 7.05, t)
     p["expr"] = "surprised"
+    p["yaw"] = 0.75
     p["head_turn"] = 0.25
     p["body_lean"] = -0.07 * lean - 0.05 * (1 - lean) + 0.012 * math.sin(t * 2.1)
     p["look"] = (0.95, lerp(0.05, 0.25, smoothstep(7.4, 8.0, t)) - 0.25 * smoothstep(8.6, 8.9, t))
