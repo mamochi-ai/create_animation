@@ -161,7 +161,7 @@ def robo_pose(t, tg):
         else:
             p["face"] = "happy"
         cv = 1.0 - ease_in_out(seg(t, 2.6, 3.45))
-        # lib draw_robo raises KeyError('apex') while the pole is ~retracted (canopy < ~0.035)
+        # snap the last few % (pole fully stowed); also avoided an old lib KeyError("apex") at tiny canopy
         p["canopy"] = cv if cv > 0.04 else 0.0
         # anticipation dip before folding, bounce when it clicks shut
         p["squash"] = 0.06 * smoothstep(2.35, 2.6, t) * (1 - seg(t, 2.6, 2.75)) \

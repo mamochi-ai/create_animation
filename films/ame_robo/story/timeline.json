@@ -6,47 +6,180 @@
  "height": 1080,
  "duration": 60.0,
  "scenes": [
-  {"id": "s01", "start": 0.0,  "end": 6.0,  "name": "Opening — rainy shopping street, title"},
-  {"id": "s02", "start": 6.0,  "end": 15.5, "name": "Mina stranded under a dripping awning; Robo rolls in"},
-  {"id": "s03", "start": 15.5, "end": 27.0, "name": "Meeting Robo; the tiny umbrella gag"},
-  {"id": "s04", "start": 27.0, "end": 38.0, "name": "Transformation into a giant umbrella; Robo gets soaked"},
-  {"id": "s05", "start": 38.0, "end": 49.0, "name": "Robo glitches; Mina shields Robo with her randoseru"},
-  {"id": "s06", "start": 49.0, "end": 60.0, "name": "The rain stops — rainbow, thank you, end card"}
+  {
+   "id": "s01",
+   "start": 0.0,
+   "end": 6.0,
+   "name": "Opening — rainy shopping street, title"
+  },
+  {
+   "id": "s02",
+   "start": 6.0,
+   "end": 15.5,
+   "name": "Mina stranded under a dripping awning; Robo rolls in"
+  },
+  {
+   "id": "s03",
+   "start": 15.5,
+   "end": 27.0,
+   "name": "Meeting Robo; the tiny umbrella gag"
+  },
+  {
+   "id": "s04",
+   "start": 27.0,
+   "end": 38.0,
+   "name": "Transformation into a giant umbrella; Robo gets soaked"
+  },
+  {
+   "id": "s05",
+   "start": 38.0,
+   "end": 49.0,
+   "name": "Robo glitches; Mina shields Robo with her randoseru"
+  },
+  {
+   "id": "s06",
+   "start": 49.0,
+   "end": 60.0,
+   "name": "The rain stops — rainbow, thank you, end card"
+  }
  ],
  "lines": [
-  {"id": "l01_mina", "start": 7.6},
-  {"id": "l02_robo", "start": 11.5},
-  {"id": "l03_mina", "start": 16.0},
-  {"id": "l04_robo", "start": 18.6},
-  {"id": "l05_mina", "start": 21.0},
-  {"id": "l06_robo", "start": 23.4},
-  {"id": "l07_mina", "start": 32.0},
-  {"id": "l08_mina", "start": 35.4},
-  {"id": "l09_robo", "start": 38.6},
-  {"id": "l10_mina", "start": 42.6},
-  {"id": "l11_robo", "start": 45.6},
-  {"id": "l12_mina", "start": 53.2},
-  {"id": "l13_robo", "start": 56.2}
+  {
+   "id": "l01_mina",
+   "start": 7.6
+  },
+  {
+   "id": "l02_robo",
+   "start": 11.5
+  },
+  {
+   "id": "l03_mina",
+   "start": 16.0
+  },
+  {
+   "id": "l04_robo",
+   "start": 18.6
+  },
+  {
+   "id": "l05_mina",
+   "start": 21.0
+  },
+  {
+   "id": "l06_robo",
+   "start": 23.4
+  },
+  {
+   "id": "l07_mina",
+   "start": 32.0
+  },
+  {
+   "id": "l08_mina",
+   "start": 35.4
+  },
+  {
+   "id": "l09_robo",
+   "start": 38.6
+  },
+  {
+   "id": "l10_mina",
+   "start": 42.6
+  },
+  {
+   "id": "l11_robo",
+   "start": 45.6
+  },
+  {
+   "id": "l12_mina",
+   "start": 53.2
+  },
+  {
+   "id": "l13_robo",
+   "start": 56.2
+  }
  ],
  "sfx": [
-  {"t": 0.0,  "name": "rain_bed_heavy_start"},
-  {"t": 6.4,  "name": "kitten_mew"},
-  {"t": 9.8,  "name": "awning_drip_on_head"},
-  {"t": 10.6, "name": "robot_rolling_squeak_start"},
-  {"t": 11.3, "name": "robot_stop_beep"},
-  {"t": 15.5, "name": "robot_scan_whirr"},
-  {"t": 20.2, "name": "tiny_umbrella_pop"},
-  {"t": 21.6, "name": "mina_giggle_beat"},
-  {"t": 27.0, "name": "transform_mechanical_unfold"},
-  {"t": 30.8, "name": "canopy_open_whump"},
-  {"t": 31.0, "name": "rain_on_canopy_drumming"},
-  {"t": 34.6, "name": "electric_sparks"},
-  {"t": 38.6, "name": "robot_glitch_stutter"},
-  {"t": 43.5, "name": "randoseru_rustle"},
-  {"t": 46.4, "name": "warm_power_up_hum"},
-  {"t": 49.5, "name": "rain_stops_last_drips"},
-  {"t": 51.0, "name": "sun_breaks_shimmer"},
-  {"t": 55.8, "name": "kitten_mew_happy"},
-  {"t": 58.3, "name": "robot_happy_beep"}
+  {
+   "t": 0.0,
+   "name": "rain_bed_heavy_start"
+  },
+  {
+   "t": 6.4,
+   "name": "kitten_mew"
+  },
+  {
+   "t": 9.8,
+   "name": "awning_drip_on_head"
+  },
+  {
+   "t": 10.6,
+   "name": "robot_rolling_squeak_start"
+  },
+  {
+   "t": 11.3,
+   "name": "robot_stop_beep"
+  },
+  {
+   "t": 15.5,
+   "name": "robot_scan_whirr"
+  },
+  {
+   "t": 20.2,
+   "name": "tiny_umbrella_pop"
+  },
+  {
+   "t": 21.6,
+   "name": "mina_giggle_beat"
+  },
+  {
+   "t": 27.0,
+   "name": "transform_mechanical_unfold"
+  },
+  {
+   "t": 30.8,
+   "name": "canopy_open_whump"
+  },
+  {
+   "t": 31.0,
+   "name": "rain_on_canopy_drumming"
+  },
+  {
+   "t": 34.6,
+   "name": "electric_sparks"
+  },
+  {
+   "t": 38.6,
+   "name": "robot_glitch_stutter"
+  },
+  {
+   "t": 43.5,
+   "name": "randoseru_rustle"
+  },
+  {
+   "t": 46.4,
+   "name": "warm_power_up_hum"
+  },
+  {
+   "t": 49.5,
+   "name": "rain_stops_last_drips"
+  },
+  {
+   "t": 51.0,
+   "name": "sun_breaks_shimmer"
+  },
+  {
+   "t": 55.8,
+   "name": "kitten_mew_happy"
+  },
+  {
+   "t": 58.3,
+   "name": "robot_happy_beep"
+  }
+ ],
+ "dissolves": [
+  [
+   "s01",
+   "s02",
+   10
+  ]
  ]
 }

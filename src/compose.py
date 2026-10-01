@@ -20,7 +20,9 @@ if ROOT != REPO:
     sys.path.insert(0, str(ROOT))  # film-local `scenes` and `lib` packages win
 from common.core import FPS, H, TIMELINE, W, over, text_layer, smoothstep  # noqa: E402
 
-DISSOLVES = {("s04", "s05"): 12, ("s06", "s07"): 18}  # frames of cross-dissolve at the cut
+# frames of cross-dissolve at a cut; a film can override via timeline.json "dissolves": [["s01","s02",12], ...]
+DISSOLVES = ({(a, b): n for a, b, n in TIMELINE["dissolves"]} if "dissolves" in TIMELINE
+             else {("s04", "s05"): 12, ("s06", "s07"): 18})
 FADE_IN, FADE_OUT = 14, 20
 
 SPEAKER_COLOR = {"haru": "#FFD27A", "kira": "#FFF3B0"}
