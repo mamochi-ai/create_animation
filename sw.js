@@ -1,5 +1,5 @@
 // Offline support: the app shell comes from the cache first, then refreshes in the background.
-const CACHE = 'osaifu-v1';
+const CACHE = 'osaifu-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

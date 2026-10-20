@@ -51,6 +51,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
 .wrap { max-width: 720px; margin: 0 auto; padding-block: 20px 56px;
@@ -110,7 +111,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 
 /* entry form */
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--sunk); border-radius: 12px; padding: 4px; gap: 4px; }
-.seg button { border: none; background: none; border-radius: 9px; padding: 8px 4px; color: var(--ink-2); font-weight: 500; }
+.seg button { white-space: nowrap; border: none; background: none; border-radius: 9px; padding: 8px 4px; color: var(--ink-2); font-weight: 500; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
 .seg.pay button { font-size: .86rem; white-space: nowrap; padding-inline: 2px; }
 .seg.pay button[data-pay="card"][aria-pressed="true"] { color: var(--card); }
@@ -143,7 +144,40 @@ label.f input, label.f select { width: 100%; min-width: 0; border: 1px solid var
 .bar-meta { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--ink-3); }
 .bar-meta b { color: var(--ink); font-weight: 700; }
 .bar-meta .over { color: var(--bad); font-weight: 700; }
-.tip { position: fixed; z-index: 20; pointer-events: none; background: var(--ink); color: var(--surface); font-size: .8rem; padding: 5px 9px; border-radius: 8px; white-space: nowrap; }
+.tip { position: fixed; z-index: 20; pointer-events: none; background: var(--ink); color: var(--surface); font-size: .8rem; padding: 5px 9px; border-radius: 8px; max-width: calc(100vw - 16px); }
+
+/* daily allowance */
+.daily { border-radius: 12px; padding: 12px 14px; background: var(--accent-soft); display: grid; gap: 2px; }
+.daily .k { font-size: .82rem; color: var(--ink-2); }
+.daily .v { font-size: 1.5rem; font-weight: 800; color: var(--ink); }
+.daily .v small { font-size: .85rem; font-weight: 500; color: var(--ink-2); }
+.daily .s { font-size: .78rem; color: var(--ink-2); }
+.daily.bad { background: var(--bad-soft); }
+.daily.bad .v { color: var(--bad); }
+
+/* month trend */
+.trend { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; align-items: end; }
+.trend-col { display: grid; gap: 4px; justify-items: center; min-width: 0; }
+.trend-plot { height: 120px; width: 100%; display: flex; align-items: flex-end; justify-content: center; border-bottom: 1px solid var(--line); }
+.trend-plot i { display: block; width: min(34px, 70%); background: color-mix(in srgb, var(--accent) 35%, var(--sunk)); border-radius: 4px 4px 0 0; min-height: 2px; }
+.trend-col.now .trend-plot i { background: var(--accent); }
+.trend-val { font-size: .72rem; color: var(--ink-2); white-space: nowrap; min-height: 1.2em; }
+.trend-col.now .trend-val { color: var(--ink); font-weight: 700; }
+.trend-m { font-size: .78rem; color: var(--ink-2); }
+.trend-left { font-size: .7rem; color: var(--ink-3); white-space: nowrap; }
+.trend-left.minus { color: var(--bad); }
+.trend-key { display: flex; justify-content: space-between; gap: 8px; font-size: .75rem; color: var(--ink-3); flex-wrap: wrap; }
+.delta { font-size: .72rem; margin-left: 6px; color: var(--ink-3); font-weight: 500; }
+.delta.up { color: var(--bad); } .delta.down { color: var(--good); }
+.compare { font-size: .88rem; color: var(--ink-2); margin: 0; }
+.compare b.up { color: var(--bad); } .compare b.down { color: var(--good); }
+
+/* fixed costs */
+.fixed-list { display: grid; gap: 0; }
+.fixed-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px dashed var(--line); font-size: .9rem; }
+.fixed-row:first-child { border-top: none; }
+.fixed-row small { color: var(--ink-3); display: block; }
+.fixed-add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 /* card billing */
 .bill-now { background: var(--sunk); border-radius: 12px; padding: 12px; display: grid; gap: 4px; }
@@ -177,6 +211,11 @@ label.f input, label.f select { width: 100%; min-width: 0; border: 1px solid var
 .row-main { min-width: 0; }
 .row-main div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-main small { color: var(--ink-3); }
+.row-main[data-edit] { cursor: pointer; border-radius: 6px; }
+.row-main[data-edit]:hover div { text-decoration: underline; text-decoration-color: var(--line); }
+.tag.charge { color: var(--ink-2); background: var(--sunk); border: 1px solid var(--line); }
+.tag.fixed { font-size: .65rem; font-weight: 500; padding: 0 4px; margin-left: 4px; color: var(--ink-3); border: 1px solid var(--line); }
+.editing-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--warn-soft); border-radius: 10px; padding: 8px 10px; font-size: .85rem; }
 .row .amt { font-weight: 700; white-space: nowrap; }
 .row .amt.income { color: var(--income); }
 .row .del { padding: 4px 8px; font-size: .78rem; border-color: transparent; background: none; color: var(--ink-3); }
@@ -227,6 +266,7 @@ details.panel[open] > summary::after { content: "－"; }
       <div class="flow"><span><i class="dot emoney"></i>電子マネー</span><b class="num" id="sum-emoney"></b></div>
       <div class="flow"><span><i class="dot qr"></i>QR決済</span><b class="num" id="sum-qr"></b></div>
     </div>
+    <div class="daily" id="daily"></div>
     <div class="meters">
       <div class="meter" id="cardMeter"></div>
       <div class="meter" id="saveMeter"></div>
@@ -243,18 +283,28 @@ details.panel[open] > summary::after { content: "－"; }
     <form id="entryForm" class="form-grid" novalidate>
       <div class="seg full" role="group" aria-label="種類">
         <button type="button" data-kind="expense" aria-pressed="true">使った</button>
-        <button type="button" data-kind="income" aria-pressed="false">もらった・入った</button>
+        <button type="button" data-kind="income" aria-pressed="false">入ったお金</button>
+        <button type="button" data-kind="charge" aria-pressed="false">チャージ</button>
       </div>
+      <div class="editing-bar full" id="editingBar" hidden><span>記録を直しています</span><button type="button" id="cancelEdit">やめる</button></div>
       <div class="seg pay full" role="group" aria-label="支払い方法" id="paySeg">
         <button type="button" data-pay="card" aria-pressed="true">カード</button>
         <button type="button" data-pay="cash" aria-pressed="false">現金</button>
         <button type="button" data-pay="emoney" aria-pressed="false">電子マネー</button>
         <button type="button" data-pay="qr" aria-pressed="false">QR決済</button>
       </div>
+      <div class="full" id="toWrap" hidden style="display:grid;gap:6px">
+        <span style="font-size:.8rem;color:var(--ink-2)" id="toLabel">チャージ先</span>
+        <div class="seg pay" role="group" aria-labelledby="toLabel">
+          <button type="button" data-to="emoney" aria-pressed="true">電子マネー</button>
+          <button type="button" data-to="qr" aria-pressed="false">QR決済</button>
+        </div>
+        <span class="note">チャージは支出に数えません。チャージした残高で払ったときに「使った」で記録します。カードからのチャージは引き落とし予定とカードの使用額に入ります。</span>
+      </div>
       <label class="f full">なにに？（品目・お店など）<input type="text" id="fItem" placeholder="例：スーパーで夕飯の買い物" autocomplete="off"></label>
       <label class="f">金額（円）<input type="number" id="fAmount" class="amount-input" min="1" step="1" inputmode="numeric" placeholder="0"></label>
       <label class="f">日付<input type="date" id="fDate"></label>
-      <div class="full" style="display:grid;gap:6px">
+      <div class="full" id="catWrap" style="display:grid;gap:6px">
         <span style="font-size:.8rem;color:var(--ink-2)" id="catLabel">用途</span>
         <div class="cats" id="cats" role="group" aria-labelledby="catLabel"></div>
       </div>
@@ -271,9 +321,16 @@ details.panel[open] > summary::after { content: "－"; }
     <div class="bars" id="bars"></div>
   </section>
 
+  <section class="panel" aria-labelledby="trendTitle">
+    <div class="panel-head"><h2 id="trendTitle">月ごとの比較</h2><small>使ったお金（直近6か月）</small></div>
+    <p class="compare" id="compare"></p>
+    <div class="trend" id="trend"></div>
+    <div class="trend-key"><span>棒：使ったお金</span><span>下の数字：残り（貯金にまわせた額）</span></div>
+  </section>
+
   <section class="panel" aria-labelledby="listTitle">
     <div class="panel-head">
-      <h2 id="listTitle">今月の記録</h2>
+      <h2 id="listTitle">今月の記録 <small class="muted" style="font-size:.75rem;font-weight:500">タップで修正</small></h2>
       <div class="filters" id="filters" role="group" aria-label="絞り込み">
         <button type="button" data-f="all" aria-pressed="true">すべて</button>
         <button type="button" data-f="card" aria-pressed="false">カード</button>
@@ -296,6 +353,19 @@ details.panel[open] > summary::after { content: "－"; }
         <label class="f">カードの引き落とし日<span style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><select id="sPayMonth" aria-label="引き落としの月"><option value="1">翌月</option><option value="2">翌々月</option></select><select id="sPayDay" aria-label="引き落としの日"></select></span></label>
         <label class="f">大きな目標の名前<input type="text" id="sGoalName" placeholder="旅行資金"></label>
         <label class="f">目標額（円）<input type="number" id="sGoal" min="0" step="10000" inputmode="numeric" placeholder="300000"></label>
+      </div>
+      <div style="display:grid;gap:8px">
+        <h2 style="font-size:.9rem">毎月の固定費（指定した日に自動で記録）</h2>
+        <div class="fixed-list" id="fixedList"></div>
+        <div class="fixed-add">
+          <label class="f">名前<input type="text" id="xName" placeholder="家賃・スマホ代・サブスクなど"></label>
+          <label class="f">金額（円）<input type="number" id="xAmount" min="1" step="1" inputmode="numeric" placeholder="0"></label>
+          <label class="f">用途<select id="xCat"></select></label>
+          <label class="f">支払い方法<select id="xPay"><option value="card">カード</option><option value="cash">現金</option><option value="emoney">電子マネー</option><option value="qr">QR決済</option></select></label>
+          <label class="f">毎月の日<select id="xDay"></select></label>
+          <div style="display:flex;align-items:end"><button type="button" id="xAdd" style="width:100%">固定費を追加</button></div>
+        </div>
+        <span class="form-msg" id="fixedMsg" role="status"></span>
       </div>
       <div style="display:grid;gap:6px">
         <h2 style="font-size:.9rem">用途ごとの月予算（空欄なら予算なし）</h2>
@@ -331,8 +401,14 @@ const CATS = {
 };
 const PAYS = { card: 'カード', cash: '現金', emoney: '電子マネー', qr: 'QR決済' };
 // closeDay / payDay: 1-31, 0 = 月末
-const DEFAULT_SETTINGS = { cardLimit: 0, monthlySave: 0, goalName: '', goal: 0, budgets: {}, closeDay: 0, payMonths: 1, payDay: 27 };
+// fixed: [{ id, name, amount, category, pay, day, lastMonth }] — recorded automatically each month on `day`
+const DEFAULT_SETTINGS = { cardLimit: 0, monthlySave: 0, goalName: '', goal: 0, budgets: {}, closeDay: 0, payMonths: 1, payDay: 27, fixed: [] };
 const payOf = e => PAYS[e.pay] ? e.pay : 'cash';
+const isExp = e => e.kind === 'expense';
+// a charge moves money from card/cash onto an e-money or QR balance; it is not spending
+const isCharge = e => e.kind === 'charge';
+let seq = 0;
+const newId = () => Date.now() * 100 + (seq++ % 100);
 
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
@@ -357,7 +433,7 @@ function billOf(dateStr) {
 
 let state = { entries: [], settings: { ...DEFAULT_SETTINGS } };
 let view = todayStr().slice(0, 7);
-let kind = 'expense', pay = 'card', cat = CATS.expense[0], filter = 'all', armedDelete = null;
+let kind = 'expense', pay = 'card', chargeTo = 'emoney', cat = CATS.expense[0], filter = 'all', armedDelete = null, editingId = null;
 
 /* ---------- storage: account (claude db) when available, else this browser ---------- */
 const store = {
@@ -424,10 +500,31 @@ function monthStats(m) {
   const sum = f => list.filter(f).reduce((a, e) => a + e.amount, 0);
   const income = sum(e => e.kind === 'income');
   const by = {};
-  Object.keys(PAYS).forEach(k => { by[k] = sum(e => e.kind === 'expense' && payOf(e) === k); });
+  Object.keys(PAYS).forEach(k => { by[k] = sum(e => isExp(e) && payOf(e) === k); });
   const spent = Object.values(by).reduce((a, v) => a + v, 0);
-  return { list, income, ...by, spent, left: income - spent };
+  const chargeCard = sum(e => isCharge(e) && e.pay === 'card');
+  return { list, income, ...by, spent, left: income - spent, chargeCard, cardUse: by.card + chargeCard };
 }
+function monthKey(y, m) { const d = new Date(y, m, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
+function nextMonth(key) { const [y, m] = key.split('-').map(Number); return monthKey(y, m); }
+
+/* record fixed costs whose day has come and that have not been recorded for that month yet */
+function applyFixed() {
+  const today = todayStr(), cur = today.slice(0, 7), touched = [];
+  (state.settings.fixed || []).forEach(f => {
+    let m = nextMonth(f.lastMonth || monthKey(Number(cur.slice(0, 4)), Number(cur.slice(5)) - 2));
+    while (m <= cur) {
+      const [y, mo] = m.split('-').map(Number);
+      const date = ymd(dayIn(y, mo - 1, f.day));
+      if (date > today) break;
+      state.entries.push({ id: newId(), kind: 'expense', date, amount: f.amount, category: f.category, item: f.name, pay: f.pay, fixedId: f.id });
+      f.lastMonth = m; touched.push(m);
+      m = nextMonth(m);
+    }
+  });
+  if (touched.length) { store.saveMonths(touched); store.saveSettings(); }
+}
+
 function level(ratio) { return ratio > 1 ? 'bad' : ratio >= 0.8 ? 'warn' : 'good'; }
 
 /* ---------- render ---------- */
@@ -446,21 +543,21 @@ function render() {
 
   // card limit meter
   if (st.cardLimit > 0) {
-    const r = s.card / st.cardLimit, lv = level(r);
+    const r = s.cardUse / st.cardLimit, lv = level(r);
     const chip = { good: 'ペース内', warn: 'もうすぐ上限', bad: '上限オーバー' }[lv];
     $('cardMeter').innerHTML = `<div class="meter-top"><span>カードの使用</span><span class="chip ${lv}">${chip}</span></div>
-      <div class="meter-val num">${yen(s.card)} <small>/ ${yen(st.cardLimit)}</small></div>
+      <div class="meter-val num">${yen(s.cardUse)} <small>/ ${yen(st.cardLimit)}</small></div>
       <div class="track"><i class="${lv === 'good' ? 'card' : lv}" style="width:${Math.min(100, r * 100)}%"></i></div>
-      <div class="meter-note">${r > 1 ? `${yen(s.card - st.cardLimit)} オーバーしています` : `あと ${yen(st.cardLimit - s.card)} まで使えます`}</div>`;
+      <div class="meter-note">${r > 1 ? `${yen(s.cardUse - st.cardLimit)} オーバーしています` : `あと ${yen(st.cardLimit - s.cardUse)} まで使えます`}${s.chargeCard ? `（チャージ ${yen(s.chargeCard)} を含む）` : ''}</div>`;
   } else {
     $('cardMeter').innerHTML = `<div class="meter-top"><span>カードの使用</span><span class="chip off">上限なし</span></div>
-      <div class="meter-val num">${yen(s.card)}</div>
+      <div class="meter-val num">${yen(s.cardUse)}</div>
       <div class="meter-note">月の上限を決めると、使いすぎを知らせます。</div>
       <button type="button" class="link" data-open-settings>上限を決める</button>`;
   }
 
   // savings meter
-  const savedTotal = state.entries.reduce((a, e) => a + (e.kind === 'income' ? e.amount : -e.amount), 0);
+  const savedTotal = state.entries.reduce((a, e) => a + (e.kind === 'income' ? e.amount : isExp(e) ? -e.amount : 0), 0);
   let saveHtml;
   if (st.monthlySave > 0) {
     const r = Math.max(0, s.left) / st.monthlySave, ok = s.left >= st.monthlySave;
@@ -481,9 +578,59 @@ function render() {
   }
   $('saveMeter').innerHTML = saveHtml;
 
+  renderDaily(s);
   renderBill();
   renderBars(s);
+  renderTrend();
   renderList(s);
+}
+
+function renderDaily(s) {
+  const box = $('daily'), today = todayStr();
+  box.className = 'daily';
+  if (view !== today.slice(0, 7)) { box.hidden = true; return; }
+  box.hidden = false;
+  const now = new Date(today + 'T00:00:00');
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysLeft = last - now.getDate() + 1;
+  const pendingFixed = (state.settings.fixed || []).filter(f => f.lastMonth < view).reduce((a, f) => a + f.amount, 0);
+  const keep = state.settings.monthlySave || 0;
+  if (!s.income) {
+    box.innerHTML = `<span class="k">1日に使える額</span><span class="s">今月の「入ったお金」（お小遣い・給料など）を記録すると、月末まで1日いくら使えるかを計算します。</span>`;
+    return;
+  }
+  const usable = s.income - s.spent - pendingFixed - keep;
+  const parts = [keep ? `貯金目標 ${yen(keep)}` : '', pendingFixed ? `これからの固定費 ${yen(pendingFixed)}` : ''].filter(Boolean);
+  const basis = parts.length ? `${parts.join('と')}を残した場合` : '入ったお金から使ったお金を引いた残りで計算';
+  if (usable <= 0) {
+    box.className = 'daily bad';
+    box.innerHTML = `<span class="k">月末まであと${daysLeft}日</span><span class="v num">今月はもう使えません</span>
+      <span class="s">${basis}、${yen(-usable)} 足りません。</span>`;
+    return;
+  }
+  box.innerHTML = `<span class="k">今日から月末まで（あと${daysLeft}日）</span>
+    <span class="v num">1日 ${yen(Math.floor(usable / daysLeft))} <small>まで使えます</small></span>
+    <span class="s">${basis}・使える残り ${yen(usable)}</span>`;
+}
+
+function renderTrend() {
+  const [y, m] = view.split('-').map(Number);
+  const months = Array.from({ length: 6 }, (_, i) => monthKey(y, m - 6 + i));
+  const stats = months.map(k => ({ k, ...monthStats(k) }));
+  const max = Math.max(1, ...stats.map(x => x.spent));
+  $('trend').innerHTML = stats.map((x, i) => {
+    const now = i === 5, has = x.list.length > 0;
+    return `<div class="trend-col ${now ? 'now' : ''}" data-tip="${Number(x.k.slice(5))}月：使ったお金 ${yen(x.spent)}・入ったお金 ${yen(x.income)}・残り ${yen(x.left)}">
+      <span class="trend-val num">${now || has ? yen(x.spent) : ''}</span>
+      <div class="trend-plot"><i style="height:${x.spent / max * 100}%"></i></div>
+      <span class="trend-m">${Number(x.k.slice(5))}月</span>
+      <span class="trend-left num ${x.left < 0 ? 'minus' : ''}">${has ? yen(x.left) : '—'}</span></div>`;
+  }).join('');
+  const cur = stats[5], prev = stats[4];
+  if (!prev.list.length) { $('compare').textContent = '先月の記録がたまると、先月との差がここに出ます。'; return; }
+  const diff = cur.spent - prev.spent;
+  $('compare').innerHTML = diff === 0 ? '使ったお金は先月と同じです。'
+    : `使ったお金は先月より <b class="num ${diff > 0 ? 'up' : 'down'}">${yen(Math.abs(diff))} ${diff > 0 ? '多い' : '少ない'}</b> です。`;
 }
 
 function renderBill() {
@@ -494,7 +641,7 @@ function renderBill() {
 
   const now = new Date(todayStr() + 'T00:00:00');
   const groups = {};
-  state.entries.filter(e => e.kind === 'expense' && payOf(e) === 'card').forEach(e => {
+  state.entries.filter(e => (isExp(e) || isCharge(e)) && payOf(e) === 'card').forEach(e => {
     const b = billOf(e.date), k = ymd(b.payOn);
     const g = groups[k] || (groups[k] = { payOn: b.payOn, close: b.close, total: 0, n: 0 });
     g.total += e.amount; g.n++;
@@ -533,18 +680,28 @@ function renderBars(s) {
     return;
   }
   const max = Math.max(...rows.map(r => Math.max(r.total, budgets[r.c] || 0)));
+  const [vy, vm] = view.split('-').map(Number), prevKey = monthKey(vy, vm - 2);
+  const prevBy = {};
+  state.entries.filter(e => isExp(e) && e.date.startsWith(prevKey)).forEach(e => { prevBy[e.category] = (prevBy[e.category] || 0) + e.amount; });
+  const hasPrev = state.entries.some(e => e.date.startsWith(prevKey));
   $('bars').innerHTML = rows.map(r => {
     const b = budgets[r.c] || 0, share = Math.round(r.total / s.spent * 100);
     const seg = (k, label) => r[k] ? `<i class="${k}" style="width:${r[k] / max * 100}%" data-tip="${esc(r.c)}・${label} ${yen(r[k])}"></i>` : '';
     const budgetNote = b ? (r.total > b ? `<span class="over">予算 ${yen(b)} を ${yen(r.total - b)} 超過</span>` : `予算 ${yen(b)} のうち ${Math.round(r.total / b * 100)}%`) : `支出の ${share}%`;
     return `<div class="bar-row"><div class="name" title="${esc(r.c)}">${esc(r.c)}</div>
       <div class="bar-body"><div class="bar-line">${Object.keys(PAYS).map(k => seg(k, PAYS[k])).join('')}</div>
-      <div class="bar-meta"><b class="num">${yen(r.total)}</b><span>${budgetNote}</span></div></div></div>`;
+      <div class="bar-meta"><span><b class="num">${yen(r.total)}</b>${hasPrev ? deltaTag(r.total - (prevBy[r.c] || 0)) : ''}</span><span>${budgetNote}</span></div></div></div>`;
   }).join('');
 }
 
+function deltaTag(d) {
+  if (!d) return '<span class="delta">先月と同じ</span>';
+  return `<span class="delta num ${d > 0 ? 'up' : 'down'}">先月より${d > 0 ? '+' : '−'}${yen(Math.abs(d)).replace('−', '')}</span>`;
+}
+
 function renderList(s) {
-  const match = e => filter === 'all' || (filter === 'income' ? e.kind === 'income' : e.kind === 'expense' && payOf(e) === filter);
+  const match = e => filter === 'all' || (filter === 'income' ? e.kind === 'income'
+    : isExp(e) ? payOf(e) === filter : isCharge(e) && (e.pay === filter || e.to === filter));
   const list = s.list.filter(match).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
   if (!list.length) {
     $('list').innerHTML = `<p class="empty">${s.list.length ? 'この条件の記録はありません。' : '記録するとここに日付ごとに並びます。'}</p>`;
@@ -557,13 +714,14 @@ function renderList(s) {
     const out = days[d].filter(e => e.kind === 'expense').reduce((a, e) => a + e.amount, 0);
     return `<div class="day"><div class="day-head"><span>${dt.getMonth() + 1}月${dt.getDate()}日（${WEEK[dt.getDay()]}）</span><span class="num">${out ? '支出 ' + yen(out) : ''}</span></div>
       ${days[d].map(e => {
-        const t = e.kind === 'income' ? 'income' : payOf(e);
-        const tl = t === 'income' ? '入金' : t === 'qr' ? 'QR' : t === 'emoney' ? '電子' : PAYS[t];
-        const b = t === 'card' ? billOf(e.date) : null;
+        const t = e.kind === 'income' ? 'income' : isCharge(e) ? 'charge' : payOf(e);
+        const tl = { income: '入金', charge: 'チャージ', qr: 'QR', emoney: '電子', card: 'カード', cash: '現金' }[t];
+        const b = payOf(e) === 'card' && e.kind !== 'income' ? billOf(e.date) : null;
         const due = b ? `・<span class="due">${b.payOn.getMonth() + 1}/${b.payOn.getDate()}引き落とし</span>` : '';
-        return `<div class="row"><span class="tag ${t}" title="${PAYS[t] || '入ったお金'}">${tl}</span>
-          <div class="row-main"><div>${esc(e.item || e.category)}</div><small>${esc(e.category)}${due}</small></div>
-          <span class="amt num ${e.kind === 'income' ? 'income' : ''}">${e.kind === 'income' ? '+' : ''}${yen(e.amount)}</span>
+        const sub = isCharge(e) ? `${PAYS[payOf(e)]} → ${PAYS[e.to] || '電子マネー'}` : esc(e.category);
+        return `<div class="row"><span class="tag ${t}" title="${PAYS[t] || (t === 'charge' ? 'チャージ' : '入ったお金')}">${tl}</span>
+          <div class="row-main" data-edit="${e.id}" role="button" tabindex="0" aria-label="${esc(e.item || e.category)}を修正"><div>${esc(e.item || e.category)}${e.fixedId ? '<span class="tag fixed">固定費</span>' : ''}</div><small>${sub}${due}</small></div>
+          <span class="amt num ${e.kind === 'income' ? 'income' : ''}" ${isCharge(e) ? 'style="color:var(--ink-3)"' : ''}>${e.kind === 'income' ? '+' : ''}${yen(e.amount)}</span>
           <button type="button" class="del ${armedDelete === e.id ? 'armed' : ''}" data-del="${e.id}" aria-label="削除">${armedDelete === e.id ? '削除する' : '✕'}</button></div>`;
       }).join('')}</div>`;
   }).join('');
@@ -571,12 +729,25 @@ function renderList(s) {
 
 function renderForm() {
   document.querySelectorAll('[data-kind]').forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === kind));
-  document.querySelectorAll('[data-pay]').forEach(b => b.setAttribute('aria-pressed', b.dataset.pay === pay));
-  $('paySeg').hidden = kind !== 'expense';
-  if (!CATS[kind].includes(cat)) cat = CATS[kind][0];
-  $('cats').innerHTML = CATS[kind].map(c => `<button type="button" data-cat="${c}" aria-pressed="${c === cat}">${c}</button>`).join('');
-  $('fItem').placeholder = kind === 'expense' ? '例：スーパーで夕飯の買い物' : '例：おばあちゃんから';
-  $('catLabel').textContent = kind === 'expense' ? '用途' : '種類';
+  if (kind === 'charge' && !['card', 'cash'].includes(pay)) pay = 'card';
+  document.querySelectorAll('[data-pay]').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.pay === pay);
+    b.hidden = kind === 'charge' && !['card', 'cash'].includes(b.dataset.pay);
+  });
+  document.querySelectorAll('[data-to]').forEach(b => b.setAttribute('aria-pressed', b.dataset.to === chargeTo));
+  $('paySeg').hidden = kind === 'income';
+  $('paySeg').setAttribute('aria-label', kind === 'charge' ? 'チャージ元' : '支払い方法');
+  $('toWrap').hidden = kind !== 'charge';
+  $('catWrap').hidden = kind === 'charge';
+  if (kind !== 'charge') {
+    if (!CATS[kind].includes(cat)) cat = CATS[kind][0];
+    $('cats').innerHTML = CATS[kind].map(c => `<button type="button" data-cat="${c}" aria-pressed="${c === cat}">${c}</button>`).join('');
+    $('catLabel').textContent = kind === 'expense' ? '用途' : '種類';
+  }
+  $('fItem').placeholder = { expense: '例：スーパーで夕飯の買い物', income: '例：おばあちゃんから', charge: '例：Suica にチャージ' }[kind];
+  $('editingBar').hidden = editingId === null;
+  $('formTitle').textContent = editingId === null ? '記録する' : '記録を直す';
+  $('submitBtn').textContent = editingId === null ? '記録する' : '更新する';
 }
 
 function fillSettings() {
@@ -586,7 +757,17 @@ function fillSettings() {
   const days = (zeroLabel) => `<option value="0">${zeroLabel}</option>` + Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}日</option>`).join('');
   $('sClose').innerHTML = days('月末'); $('sPayDay').innerHTML = days('末日');
   $('sClose').value = st.closeDay || 0; $('sPayDay').value = st.payDay || 0; $('sPayMonth').value = st.payMonths || 1;
+  $('xCat').innerHTML = CATS.expense.map(c => `<option>${c}</option>`).join('');
+  $('xDay').innerHTML = days('月末').replace('<option value="0">月末</option>', '') + '<option value="0">月末</option>';
+  renderFixed();
   $('budgetInputs').innerHTML = CATS.expense.map(c => `<label class="f">${c}<input type="number" min="0" step="1000" inputmode="numeric" id="b-${CATS.expense.indexOf(c)}" data-budget="${c}" value="${(st.budgets || {})[c] || ''}"></label>`).join('');
+}
+
+function renderFixed() {
+  const fx = state.settings.fixed || [];
+  $('fixedList').innerHTML = fx.length ? fx.map(f => `<div class="fixed-row"><div>${esc(f.name)}<small>毎月${f.day ? f.day + '日' : '末日'}・${esc(f.category)}・${PAYS[f.pay]}</small></div>
+    <b class="num">${yen(f.amount)}</b><button type="button" class="btn-quiet" data-fixed-del="${f.id}" aria-label="${esc(f.name)}を削除">✕</button></div>`).join('')
+    : '<p class="note">家賃・スマホ代・サブスクなどを登録すると、毎月その日に自動で記録されます。</p>';
 }
 
 function renderWhere() {
@@ -605,24 +786,58 @@ $('entryForm').addEventListener('submit', e => {
   const amount = Math.round(Number($('fAmount').value));
   if (!(amount > 0)) { $('formMsg').style.color = 'var(--bad)'; $('formMsg').textContent = '金額を入れてください。'; $('fAmount').focus(); return; }
   const date = $('fDate').value || todayStr();
-  const entry = { id: Date.now(), kind, date, amount, category: cat, item: $('fItem').value.trim() };
-  if (kind === 'expense') entry.pay = pay;
-  state.entries.push(entry);
-  store.saveMonths([date.slice(0, 7)]);
-  $('fAmount').value = ''; $('fItem').value = '';
+  const entry = { id: editingId ?? newId(), kind, date, amount, category: kind === 'charge' ? 'チャージ' : cat, item: $('fItem').value.trim() };
+  if (kind !== 'income') entry.pay = pay;
+  if (kind === 'charge') entry.to = chargeTo;
+  const months = [date.slice(0, 7)];
+  if (editingId !== null) {
+    const i = state.entries.findIndex(x => x.id === editingId);
+    if (i >= 0) {
+      const old = state.entries[i];
+      if (old.fixedId) entry.fixedId = old.fixedId;
+      months.push(old.date.slice(0, 7));
+      state.entries[i] = entry;
+    }
+  } else {
+    state.entries.push(entry);
+  }
+  store.saveMonths(months);
+  const wasEditing = editingId !== null;
+  editingId = null; renderForm();
+  $('fAmount').value = ''; $('fItem').value = ''; $('fDate').value = todayStr();
   $('formMsg').style.color = '';
-  $('formMsg').textContent = `${entry.item || cat} ${yen(amount)} を記録しました。`;
+  $('formMsg').textContent = `${entry.item || entry.category} ${yen(amount)} を${wasEditing ? '直しました' : '記録しました'}。`;
   view = date.slice(0, 7);
   render();
 });
 
+function startEdit(id) {
+  const e = state.entries.find(x => x.id === id); if (!e) return;
+  editingId = id; kind = e.kind; pay = payOf(e); chargeTo = e.to || 'emoney'; cat = e.category;
+  $('fItem').value = e.item || ''; $('fAmount').value = e.amount; $('fDate').value = e.date;
+  $('formMsg').textContent = '';
+  renderForm();
+  $('formTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('fAmount').focus({ preventScroll: true });
+}
+$('cancelEdit').addEventListener('click', () => {
+  editingId = null; $('fAmount').value = ''; $('fItem').value = ''; $('fDate').value = todayStr(); renderForm();
+});
+document.querySelectorAll('[data-to]').forEach(b => b.addEventListener('click', () => { chargeTo = b.dataset.to; renderForm(); }));
+
+$('list').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset.edit) { e.preventDefault(); startEdit(Number(e.target.dataset.edit)); }
+});
 $('list').addEventListener('click', e => {
+  const ed = e.target.closest('[data-edit]');
+  if (ed) { startEdit(Number(ed.dataset.edit)); return; }
   const b = e.target.closest('[data-del]'); if (!b) return;
   const id = Number(b.dataset.del);
   if (armedDelete !== id) { armedDelete = id; render(); return; }
   const target = state.entries.find(x => x.id === id);
   state.entries = state.entries.filter(x => x.id !== id);
   armedDelete = null;
+  if (editingId === id) { editingId = null; renderForm(); }
   if (target) store.saveMonths([target.date.slice(0, 7)]);
   render();
 });
@@ -641,12 +856,35 @@ document.addEventListener('click', e => {
 $('saveSettings').addEventListener('click', () => {
   const budgets = {};
   document.querySelectorAll('[data-budget]').forEach(i => { const v = toInt(i.value); if (v) budgets[i.dataset.budget] = v; });
-  state.settings = { cardLimit: toInt($('sCard').value), monthlySave: toInt($('sSave').value), goalName: $('sGoalName').value.trim(), goal: toInt($('sGoal').value), budgets,
+  state.settings = { ...state.settings, cardLimit: toInt($('sCard').value), monthlySave: toInt($('sSave').value), goalName: $('sGoalName').value.trim(), goal: toInt($('sGoal').value), budgets,
     closeDay: toInt($('sClose').value), payMonths: toInt($('sPayMonth').value) || 1, payDay: toInt($('sPayDay').value) };
   store.saveSettings();
   $('settingsMsg').textContent = '保存しました。';
   setTimeout(() => { $('settingsMsg').textContent = ''; }, 2500);
   render();
+});
+
+$('xAdd').addEventListener('click', () => {
+  const name = $('xName').value.trim(), amount = toInt($('xAmount').value);
+  if (!name || !amount) { $('fixedMsg').style.color = 'var(--bad)'; $('fixedMsg').textContent = '名前と金額を入れてください。'; return; }
+  const cur = todayStr().slice(0, 7), [y, m] = cur.split('-').map(Number);
+  const f = { id: newId(), name, amount, category: $('xCat').value, pay: $('xPay').value, day: toInt($('xDay').value), lastMonth: monthKey(y, m - 2) };
+  state.settings.fixed = [...(state.settings.fixed || []), f];
+  store.saveSettings();
+  applyFixed();
+  $('xName').value = ''; $('xAmount').value = '';
+  $('fixedMsg').style.color = '';
+  $('fixedMsg').textContent = `${name} を登録しました。${f.lastMonth === cur ? '今月分も記録しました。' : ''}`;
+  renderFixed(); render();
+});
+$('fixedList').addEventListener('click', e => {
+  const b = e.target.closest('[data-fixed-del]'); if (!b) return;
+  const id = Number(b.dataset.fixedDel);
+  state.settings.fixed = (state.settings.fixed || []).filter(f => f.id !== id);
+  store.saveSettings();
+  $('fixedMsg').style.color = '';
+  $('fixedMsg').textContent = '固定費を削除しました。記録済みの分はそのまま残ります。';
+  renderFixed(); render();
 });
 
 function shiftMonth(d) {
@@ -661,14 +899,17 @@ $('next').addEventListener('click', () => shiftMonth(1));
 
 // chart hover tooltip
 const tip = $('tip');
-$('bars').addEventListener('pointermove', e => {
+const onTipMove = e => {
   const t = e.target.closest('[data-tip]');
   if (!t) { tip.hidden = true; return; }
   tip.textContent = t.dataset.tip; tip.hidden = false;
   const x = Math.min(e.clientX + 12, window.innerWidth - tip.offsetWidth - 8);
-  tip.style.left = x + 'px'; tip.style.top = (e.clientY - 34) + 'px';
+  tip.style.left = Math.max(8, x) + 'px'; tip.style.top = (e.clientY - 34) + 'px';
+};
+['bars', 'trend'].forEach(id => {
+  $(id).addEventListener('pointermove', onTipMove);
+  $(id).addEventListener('pointerleave', () => { tip.hidden = true; });
 });
-$('bars').addEventListener('pointerleave', () => { tip.hidden = true; });
 
 // backup
 $('exportBtn').addEventListener('click', async () => {
@@ -707,8 +948,9 @@ $('importFile').addEventListener('change', async e => {
 const local = store.readLocal();
 if (local) state = local;
 $('fDate').value = todayStr();
+applyFixed();
 renderForm(); fillSettings(); render(); renderWhere();
-store.connect().then(ok => { if (ok) { fillSettings(); render(); } renderWhere(); });
+store.connect().then(ok => { if (ok) { applyFixed(); fillSettings(); render(); } renderWhere(); });
 // home-screen app: work offline, and ask the browser not to clear saved records
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.claude) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
