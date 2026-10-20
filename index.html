@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#1f6f78">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="おさいふ帳">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 </head>
 <body>
 <title>おさいふ帳</title>
@@ -701,6 +709,11 @@ if (local) state = local;
 $('fDate').value = todayStr();
 renderForm(); fillSettings(); render(); renderWhere();
 store.connect().then(ok => { if (ok) { fillSettings(); render(); } renderWhere(); });
+// home-screen app: work offline, and ask the browser not to clear saved records
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.claude) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.storage?.persist?.().catch(() => {});
+}
 </script>
 </body>
 </html>
