@@ -16,7 +16,7 @@
   --bg: #eef1f4; --surface: #ffffff; --sunk: #f3f5f8; --line: #dde2e8;
   --ink: #17202b; --ink-2: #4b5664; --ink-3: #7a8594;
   --accent: #1f6f78; --accent-ink: #ffffff; --accent-soft: #dcefef;
-  --card: #2a78d6; --cash: #eb6834; --income: #1d7f55;
+  --card: #2a78d6; --cash: #eb6834; --emoney: #1baf7a; --qr: #6250d6; --income: #1d7f55;
   --good: #1d7f55; --warn: #b77a00; --bad: #c63b3b;
   --warn-soft: #fbefd2; --bad-soft: #fbe1e1; --good-soft: #dcf1e6;
   --font-display: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Zen Kaku Gothic New", sans-serif;
@@ -27,7 +27,7 @@
     --bg: #12161b; --surface: #1b2128; --sunk: #232a33; --line: #2f3843;
     --ink: #ecf0f4; --ink-2: #b6c0cc; --ink-3: #8794a3;
     --accent: #4fb3b9; --accent-ink: #0e1a1c; --accent-soft: #1d3436;
-    --card: #3987e5; --cash: #d95926; --income: #4cc08a;
+    --card: #3987e5; --cash: #d95926; --emoney: #199e70; --qr: #9085e9; --income: #4cc08a;
     --good: #4cc08a; --warn: #e2a93a; --bad: #ef7272;
     --warn-soft: #3a2f17; --bad-soft: #3d2023; --good-soft: #193328;
     color-scheme: dark;
@@ -37,7 +37,7 @@
   --bg: #12161b; --surface: #1b2128; --sunk: #232a33; --line: #2f3843;
   --ink: #ecf0f4; --ink-2: #b6c0cc; --ink-3: #8794a3;
   --accent: #4fb3b9; --accent-ink: #0e1a1c; --accent-soft: #1d3436;
-  --card: #3987e5; --cash: #d95926; --income: #4cc08a;
+  --card: #3987e5; --cash: #d95926; --emoney: #199e70; --qr: #9085e9; --income: #4cc08a;
   --good: #4cc08a; --warn: #e2a93a; --bad: #ef7272;
   --warn-soft: #3a2f17; --bad-soft: #3d2023; --good-soft: #193328;
   color-scheme: dark;
@@ -74,12 +74,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .hero-left .label { font-size: .8rem; color: var(--ink-2); }
 .hero-left .big { font-size: 2.1rem; font-weight: 800; line-height: 1.2; }
 .hero-left .sub { font-size: .85rem; color: var(--ink-2); }
-.flows { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.flows { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.flows .flow.in { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
 .flow { background: var(--sunk); border-radius: 12px; padding: 10px 12px; min-width: 0; }
 .flow span { display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--ink-2); }
 .flow b { display: block; font-size: 1.05rem; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.dot.card { background: var(--card); } .dot.cash { background: var(--cash); } .dot.income { background: var(--income); }
+.dot.card { background: var(--card); } .dot.cash { background: var(--cash); } .dot.emoney { background: var(--emoney); } .dot.qr { background: var(--qr); } .dot.income { background: var(--income); }
 
 /* meters */
 .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -103,8 +104,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--sunk); border-radius: 12px; padding: 4px; gap: 4px; }
 .seg button { border: none; background: none; border-radius: 9px; padding: 8px 4px; color: var(--ink-2); font-weight: 500; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.seg.pay button { font-size: .86rem; white-space: nowrap; padding-inline: 2px; }
 .seg.pay button[data-pay="card"][aria-pressed="true"] { color: var(--card); }
 .seg.pay button[data-pay="cash"][aria-pressed="true"] { color: var(--cash); }
+.seg.pay button[data-pay="emoney"][aria-pressed="true"] { color: color-mix(in srgb, var(--emoney) 75%, var(--ink)); }
+.seg.pay button[data-pay="qr"][aria-pressed="true"] { color: var(--qr); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .form-grid .full { grid-column: 1 / -1; }
 label.f { display: grid; gap: 4px; font-size: .8rem; color: var(--ink-2); min-width: 0; }
@@ -116,7 +120,7 @@ label.f input, label.f select { width: 100%; min-width: 0; border: 1px solid var
 .form-msg { font-size: .85rem; color: var(--good); min-height: 1.3em; margin: 0; }
 
 /* chart */
-.legend { display: flex; gap: 14px; font-size: .8rem; color: var(--ink-2); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .8rem; color: var(--ink-2); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .bars { display: grid; gap: 10px; }
 .bar-row { display: grid; grid-template-columns: 5.2em 1fr; gap: 10px; align-items: center; }
@@ -126,12 +130,26 @@ label.f input, label.f select { width: 100%; min-width: 0; border: 1px solid var
 .bar-line i { height: 100%; min-width: 3px; position: relative; }
 .bar-line i:first-child { border-radius: 4px 0 0 4px; } .bar-line i:last-child { border-radius: 0 4px 4px 0; }
 .bar-line i:only-child { border-radius: 4px; }
-.bar-line i.card { background: var(--card); } .bar-line i.cash { background: var(--cash); }
+.bar-line i.card { background: var(--card); } .bar-line i.cash { background: var(--cash); } .bar-line i.emoney { background: var(--emoney); } .bar-line i.qr { background: var(--qr); }
 .bar-line i:hover { filter: brightness(1.1); }
 .bar-meta { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--ink-3); }
 .bar-meta b { color: var(--ink); font-weight: 700; }
 .bar-meta .over { color: var(--bad); font-weight: 700; }
 .tip { position: fixed; z-index: 20; pointer-events: none; background: var(--ink); color: var(--surface); font-size: .8rem; padding: 5px 9px; border-radius: 8px; white-space: nowrap; }
+
+/* card billing */
+.bill-now { background: var(--sunk); border-radius: 12px; padding: 12px; display: grid; gap: 4px; }
+.bill-now .k { font-size: .8rem; color: var(--ink-2); }
+.bill-now .v { font-size: 1.3rem; font-weight: 800; }
+.bill-now .s { font-size: .82rem; color: var(--ink-2); }
+.bill-list { display: grid; gap: 0; }
+.bill-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 9px 0; border-top: 1px dashed var(--line); }
+.bill-row:first-child { border-top: none; }
+.bill-row small { grid-column: 1 / -1; color: var(--ink-3); font-size: .78rem; }
+.bill-row b { font-size: 1.02rem; }
+.bill-row.next { color: var(--ink); }
+.bill-row .when { font-weight: 700; }
+.soon { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; margin-left: 6px; background: var(--accent-soft); color: var(--accent); }
 
 /* list */
 .filters { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -144,7 +162,10 @@ label.f input, label.f select { width: 100%; min-width: 0; border: 1px solid var
 .tag { font-size: .7rem; font-weight: 700; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
 .tag.card { color: var(--card); background: color-mix(in srgb, var(--card) 14%, transparent); }
 .tag.cash { color: var(--cash); background: color-mix(in srgb, var(--cash) 14%, transparent); }
+.tag.emoney { color: color-mix(in srgb, var(--emoney) 70%, var(--ink)); background: color-mix(in srgb, var(--emoney) 14%, transparent); }
+.tag.qr { color: var(--qr); background: color-mix(in srgb, var(--qr) 14%, transparent); }
 .tag.income { color: var(--income); background: color-mix(in srgb, var(--income) 14%, transparent); }
+.row-main .due { color: var(--card); }
 .row-main { min-width: 0; }
 .row-main div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-main small { color: var(--ink-3); }
@@ -167,7 +188,6 @@ details.panel[open] > summary::after { content: "－"; }
 
 @media (max-width: 520px) {
   .flows { grid-template-columns: 1fr 1fr; }
-  .flows .flow:first-child { grid-column: 1 / -1; }
   .meters { grid-template-columns: 1fr; }
   .hero-left .big { font-size: 1.8rem; }
 }
@@ -193,14 +213,21 @@ details.panel[open] > summary::after { content: "－"; }
       <div class="sub" id="leftSub"></div>
     </div>
     <div class="flows">
-      <div class="flow"><span><i class="dot income"></i>入ったお金</span><b class="num" id="inSum"></b></div>
-      <div class="flow"><span><i class="dot card"></i>カード払い</span><b class="num" id="cardSum"></b></div>
-      <div class="flow"><span><i class="dot cash"></i>現金払い</span><b class="num" id="cashSum"></b></div>
+      <div class="flow in"><span><i class="dot income"></i>入ったお金</span><b class="num" id="inSum"></b></div>
+      <div class="flow"><span><i class="dot card"></i>カード</span><b class="num" id="sum-card"></b></div>
+      <div class="flow"><span><i class="dot cash"></i>現金</span><b class="num" id="sum-cash"></b></div>
+      <div class="flow"><span><i class="dot emoney"></i>電子マネー</span><b class="num" id="sum-emoney"></b></div>
+      <div class="flow"><span><i class="dot qr"></i>QR決済</span><b class="num" id="sum-qr"></b></div>
     </div>
     <div class="meters">
       <div class="meter" id="cardMeter"></div>
       <div class="meter" id="saveMeter"></div>
     </div>
+  </section>
+
+  <section class="panel" aria-labelledby="billTitle">
+    <div class="panel-head"><h2 id="billTitle">カードの引き落とし</h2><small id="billRule"></small></div>
+    <div id="bill"></div>
   </section>
 
   <section class="panel" aria-labelledby="formTitle">
@@ -213,6 +240,8 @@ details.panel[open] > summary::after { content: "－"; }
       <div class="seg pay full" role="group" aria-label="支払い方法" id="paySeg">
         <button type="button" data-pay="card" aria-pressed="true">カード</button>
         <button type="button" data-pay="cash" aria-pressed="false">現金</button>
+        <button type="button" data-pay="emoney" aria-pressed="false">電子マネー</button>
+        <button type="button" data-pay="qr" aria-pressed="false">QR決済</button>
       </div>
       <label class="f full">なにに？（品目・お店など）<input type="text" id="fItem" placeholder="例：スーパーで夕飯の買い物" autocomplete="off"></label>
       <label class="f">金額（円）<input type="number" id="fAmount" class="amount-input" min="1" step="1" inputmode="numeric" placeholder="0"></label>
@@ -229,7 +258,7 @@ details.panel[open] > summary::after { content: "－"; }
   <section class="panel" aria-labelledby="useTitle">
     <div class="panel-head">
       <h2 id="useTitle">用途ごとの支出</h2>
-      <div class="legend"><span><i class="dot card"></i>カード</span><span><i class="dot cash"></i>現金</span></div>
+      <div class="legend"><span><i class="dot card"></i>カード</span><span><i class="dot cash"></i>現金</span><span><i class="dot emoney"></i>電子マネー</span><span><i class="dot qr"></i>QR決済</span></div>
     </div>
     <div class="bars" id="bars"></div>
   </section>
@@ -241,6 +270,8 @@ details.panel[open] > summary::after { content: "－"; }
         <button type="button" data-f="all" aria-pressed="true">すべて</button>
         <button type="button" data-f="card" aria-pressed="false">カード</button>
         <button type="button" data-f="cash" aria-pressed="false">現金</button>
+        <button type="button" data-f="emoney" aria-pressed="false">電子マネー</button>
+        <button type="button" data-f="qr" aria-pressed="false">QR決済</button>
         <button type="button" data-f="income" aria-pressed="false">入ったお金</button>
       </div>
     </div>
@@ -253,6 +284,8 @@ details.panel[open] > summary::after { content: "－"; }
       <div class="form-grid">
         <label class="f">カードは月にいくらまで？<input type="number" id="sCard" min="0" step="1000" inputmode="numeric" placeholder="30000"></label>
         <label class="f">毎月いくら貯めたい？<input type="number" id="sSave" min="0" step="1000" inputmode="numeric" placeholder="20000"></label>
+        <label class="f">カードの締め日<select id="sClose"></select></label>
+        <label class="f">カードの引き落とし日<span style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><select id="sPayMonth" aria-label="引き落としの月"><option value="1">翌月</option><option value="2">翌々月</option></select><select id="sPayDay" aria-label="引き落としの日"></select></span></label>
         <label class="f">大きな目標の名前<input type="text" id="sGoalName" placeholder="旅行資金"></label>
         <label class="f">目標額（円）<input type="number" id="sGoal" min="0" step="10000" inputmode="numeric" placeholder="300000"></label>
       </div>
@@ -288,7 +321,10 @@ const CATS = {
   expense: ['食費', '外食', '日用品', '交通', '趣味・娯楽', '服・美容', '交際', '通信', '住まい', '医療', '勉強', 'その他'],
   income: ['お小遣い', '給料', 'ボーナス', '臨時収入', 'その他'],
 };
-const DEFAULT_SETTINGS = { cardLimit: 0, monthlySave: 0, goalName: '', goal: 0, budgets: {} };
+const PAYS = { card: 'カード', cash: '現金', emoney: '電子マネー', qr: 'QR決済' };
+// closeDay / payDay: 1-31, 0 = 月末
+const DEFAULT_SETTINGS = { cardLimit: 0, monthlySave: 0, goalName: '', goal: 0, budgets: {}, closeDay: 0, payMonths: 1, payDay: 27 };
+const payOf = e => PAYS[e.pay] ? e.pay : 'cash';
 
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
@@ -297,6 +333,19 @@ const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const toInt = v => Math.max(0, Math.round(Number(v) || 0));
 const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+const dayLabel = d => `${d.getMonth() + 1}月${d.getDate()}日（${WEEK[d.getDay()]}）`;
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// day of month, clamped to the month's length; 0 means the last day
+const dayIn = (y, m, day) => { const last = new Date(y, m + 1, 0).getDate(); return new Date(y, m, day && day < last ? day : last); };
+
+/* card billing: which closing date a purchase falls into, and when it is paid */
+function billOf(dateStr) {
+  const st = state.settings, d = new Date(dateStr + 'T00:00:00');
+  let close = dayIn(d.getFullYear(), d.getMonth(), st.closeDay);
+  if (d > close) close = dayIn(d.getFullYear(), d.getMonth() + 1, st.closeDay);
+  const payOn = dayIn(close.getFullYear(), close.getMonth() + (st.payMonths || 1), st.payDay);
+  return { close, payOn };
+}
 
 let state = { entries: [], settings: { ...DEFAULT_SETTINGS } };
 let view = todayStr().slice(0, 7);
@@ -366,9 +415,10 @@ function monthStats(m) {
   const list = state.entries.filter(e => e.date.startsWith(m));
   const sum = f => list.filter(f).reduce((a, e) => a + e.amount, 0);
   const income = sum(e => e.kind === 'income');
-  const card = sum(e => e.kind === 'expense' && e.pay === 'card');
-  const cash = sum(e => e.kind === 'expense' && e.pay !== 'card');
-  return { list, income, card, cash, spent: card + cash, left: income - card - cash };
+  const by = {};
+  Object.keys(PAYS).forEach(k => { by[k] = sum(e => e.kind === 'expense' && payOf(e) === k); });
+  const spent = Object.values(by).reduce((a, v) => a + v, 0);
+  return { list, income, ...by, spent, left: income - spent };
 }
 function level(ratio) { return ratio > 1 ? 'bad' : ratio >= 0.8 ? 'warn' : 'good'; }
 
@@ -384,8 +434,7 @@ function render() {
     ? `入ったお金 ${yen(s.income)} − 使ったお金 ${yen(s.spent)}`
     : 'この月の記録はまだありません。下の「記録する」から追加できます。';
   $('inSum').textContent = yen(s.income);
-  $('cardSum').textContent = yen(s.card);
-  $('cashSum').textContent = yen(s.cash);
+  Object.keys(PAYS).forEach(k => { $('sum-' + k).textContent = yen(s[k]); });
 
   // card limit meter
   if (st.cardLimit > 0) {
@@ -424,18 +473,53 @@ function render() {
   }
   $('saveMeter').innerHTML = saveHtml;
 
+  renderBill();
   renderBars(s);
   renderList(s);
+}
+
+function renderBill() {
+  const st = state.settings;
+  const closeTxt = st.closeDay ? `${st.closeDay}日` : '月末';
+  const payTxt = `${st.payMonths === 2 ? '翌々月' : '翌月'}${st.payDay ? st.payDay + '日' : '末日'}`;
+  $('billRule').innerHTML = `${closeTxt}締め・${payTxt}払い <button type="button" class="link" data-open-settings style="border:none;background:none;padding:0;color:var(--accent);text-decoration:underline;font-size:inherit">変更</button>`;
+
+  const now = new Date(todayStr() + 'T00:00:00');
+  const groups = {};
+  state.entries.filter(e => e.kind === 'expense' && payOf(e) === 'card').forEach(e => {
+    const b = billOf(e.date), k = ymd(b.payOn);
+    const g = groups[k] || (groups[k] = { payOn: b.payOn, close: b.close, total: 0, n: 0 });
+    g.total += e.amount; g.n++;
+  });
+  const cur = billOf(todayStr());
+  const curGroup = groups[ymd(cur.payOn)];
+  const daysLeft = Math.round((cur.close - now) / 86400000);
+  let html = `<div class="bill-now"><span class="k">いま使うと → ${dayLabel(cur.close)}締め（${daysLeft ? 'あと' + daysLeft + '日' : '今日'}）</span>
+    <span class="v num">${yen(curGroup ? curGroup.total : 0)}</span>
+    <span class="s">この締めの分は <b>${dayLabel(cur.payOn)}</b> に引き落とされます</span></div>`;
+  const upcoming = Object.values(groups).filter(g => g.payOn >= now).sort((a, b) => a.payOn - b.payOn);
+  if (upcoming.length) {
+    html += '<div class="bill-list">' + upcoming.map((g, i) => {
+      const until = Math.round((g.payOn - now) / 86400000);
+      const open = g.close >= now;
+      return `<div class="bill-row"><span class="when">${dayLabel(g.payOn)}${i === 0 ? '<span class="soon">' + (until ? 'あと' + until + '日' : '今日') + '</span>' : ''}</span>
+        <b class="num">${yen(g.total)}</b>
+        <small>${dayLabel(g.close)}締め分・${g.n}件${open ? '（まだ増えます）' : '（確定）'}</small></div>`;
+    }).join('') + '</div>';
+  } else {
+    html += '<p class="empty">カードで払った記録があると、引き落とし日ごとの金額がここに並びます。</p>';
+  }
+  $('bill').innerHTML = html;
 }
 
 function renderBars(s) {
   const by = {};
   s.list.filter(e => e.kind === 'expense').forEach(e => {
-    const b = by[e.category] || (by[e.category] = { card: 0, cash: 0 });
-    b[e.pay === 'card' ? 'card' : 'cash'] += e.amount;
+    const b = by[e.category] || (by[e.category] = { card: 0, cash: 0, emoney: 0, qr: 0 });
+    b[payOf(e)] += e.amount;
   });
   const budgets = state.settings.budgets || {};
-  const rows = Object.keys(by).map(c => ({ c, ...by[c], total: by[c].card + by[c].cash })).sort((a, b) => b.total - a.total);
+  const rows = Object.keys(by).map(c => ({ c, ...by[c], total: Object.values(by[c]).reduce((a, v) => a + v, 0) })).sort((a, b) => b.total - a.total);
   if (!rows.length) {
     $('bars').innerHTML = '<p class="empty">支出を記録すると、何にいくら使ったかがここに並びます。</p>';
     return;
@@ -446,13 +530,13 @@ function renderBars(s) {
     const seg = (k, label) => r[k] ? `<i class="${k}" style="width:${r[k] / max * 100}%" data-tip="${esc(r.c)}・${label} ${yen(r[k])}"></i>` : '';
     const budgetNote = b ? (r.total > b ? `<span class="over">予算 ${yen(b)} を ${yen(r.total - b)} 超過</span>` : `予算 ${yen(b)} のうち ${Math.round(r.total / b * 100)}%`) : `支出の ${share}%`;
     return `<div class="bar-row"><div class="name" title="${esc(r.c)}">${esc(r.c)}</div>
-      <div class="bar-body"><div class="bar-line">${seg('card', 'カード')}${seg('cash', '現金')}</div>
+      <div class="bar-body"><div class="bar-line">${Object.keys(PAYS).map(k => seg(k, PAYS[k])).join('')}</div>
       <div class="bar-meta"><b class="num">${yen(r.total)}</b><span>${budgetNote}</span></div></div></div>`;
   }).join('');
 }
 
 function renderList(s) {
-  const match = e => filter === 'all' || (filter === 'income' ? e.kind === 'income' : e.kind === 'expense' && (e.pay === 'card' ? 'card' : 'cash') === filter);
+  const match = e => filter === 'all' || (filter === 'income' ? e.kind === 'income' : e.kind === 'expense' && payOf(e) === filter);
   const list = s.list.filter(match).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
   if (!list.length) {
     $('list').innerHTML = `<p class="empty">${s.list.length ? 'この条件の記録はありません。' : '記録するとここに日付ごとに並びます。'}</p>`;
@@ -465,10 +549,12 @@ function renderList(s) {
     const out = days[d].filter(e => e.kind === 'expense').reduce((a, e) => a + e.amount, 0);
     return `<div class="day"><div class="day-head"><span>${dt.getMonth() + 1}月${dt.getDate()}日（${WEEK[dt.getDay()]}）</span><span class="num">${out ? '支出 ' + yen(out) : ''}</span></div>
       ${days[d].map(e => {
-        const t = e.kind === 'income' ? 'income' : e.pay === 'card' ? 'card' : 'cash';
-        const tl = { income: '入金', card: 'カード', cash: '現金' }[t];
-        return `<div class="row"><span class="tag ${t}">${tl}</span>
-          <div class="row-main"><div>${esc(e.item || e.category)}</div><small>${esc(e.category)}</small></div>
+        const t = e.kind === 'income' ? 'income' : payOf(e);
+        const tl = t === 'income' ? '入金' : t === 'qr' ? 'QR' : t === 'emoney' ? '電子' : PAYS[t];
+        const b = t === 'card' ? billOf(e.date) : null;
+        const due = b ? `・<span class="due">${b.payOn.getMonth() + 1}/${b.payOn.getDate()}引き落とし</span>` : '';
+        return `<div class="row"><span class="tag ${t}" title="${PAYS[t] || '入ったお金'}">${tl}</span>
+          <div class="row-main"><div>${esc(e.item || e.category)}</div><small>${esc(e.category)}${due}</small></div>
           <span class="amt num ${e.kind === 'income' ? 'income' : ''}">${e.kind === 'income' ? '+' : ''}${yen(e.amount)}</span>
           <button type="button" class="del ${armedDelete === e.id ? 'armed' : ''}" data-del="${e.id}" aria-label="削除">${armedDelete === e.id ? '削除する' : '✕'}</button></div>`;
       }).join('')}</div>`;
@@ -489,6 +575,9 @@ function fillSettings() {
   const st = state.settings;
   $('sCard').value = st.cardLimit || ''; $('sSave').value = st.monthlySave || '';
   $('sGoalName').value = st.goalName || ''; $('sGoal').value = st.goal || '';
+  const days = (zeroLabel) => `<option value="0">${zeroLabel}</option>` + Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}日</option>`).join('');
+  $('sClose').innerHTML = days('月末'); $('sPayDay').innerHTML = days('末日');
+  $('sClose').value = st.closeDay || 0; $('sPayDay').value = st.payDay || 0; $('sPayMonth').value = st.payMonths || 1;
   $('budgetInputs').innerHTML = CATS.expense.map(c => `<label class="f">${c}<input type="number" min="0" step="1000" inputmode="numeric" id="b-${CATS.expense.indexOf(c)}" data-budget="${c}" value="${(st.budgets || {})[c] || ''}"></label>`).join('');
 }
 
@@ -544,7 +633,8 @@ document.addEventListener('click', e => {
 $('saveSettings').addEventListener('click', () => {
   const budgets = {};
   document.querySelectorAll('[data-budget]').forEach(i => { const v = toInt(i.value); if (v) budgets[i.dataset.budget] = v; });
-  state.settings = { cardLimit: toInt($('sCard').value), monthlySave: toInt($('sSave').value), goalName: $('sGoalName').value.trim(), goal: toInt($('sGoal').value), budgets };
+  state.settings = { cardLimit: toInt($('sCard').value), monthlySave: toInt($('sSave').value), goalName: $('sGoalName').value.trim(), goal: toInt($('sGoal').value), budgets,
+    closeDay: toInt($('sClose').value), payMonths: toInt($('sPayMonth').value) || 1, payDay: toInt($('sPayDay').value) };
   store.saveSettings();
   $('settingsMsg').textContent = '保存しました。';
   setTimeout(() => { $('settingsMsg').textContent = ''; }, 2500);
