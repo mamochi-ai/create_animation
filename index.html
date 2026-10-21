@@ -254,9 +254,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       <button type="button" class="tile stash" data-go="stash"><span>へそくり残高</span><b class="num" id="tStash"></b></button>
     </div>
     <section class="panel" aria-labelledby="payTitle">
-      <h2 id="payTitle">支払い方法ごと</h2>
+      <div class="panel-head"><h2 id="payTitle">支払い方法ごと</h2><small>使ったお金 <b class="num" id="paySum"></b></small></div>
       <div class="paybar" id="payBar"></div>
       <div class="paylist" id="payList"></div>
+      <p class="note" id="payNote"></p>
     </section>
     <section class="panel" aria-labelledby="cardTitle">
       <div class="panel-head"><h2 id="cardTitle">カード</h2><small id="billRule"></small></div>
@@ -298,7 +299,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
             <button type="button" data-to="emoney" aria-pressed="true">電子マネー</button>
             <button type="button" data-to="qr" aria-pressed="false">QR決済</button>
           </div>
-          <span class="note">チャージは支出に数えません。残高で払ったときに「使った」で記録してください。</span>
+          <span class="note">チャージした金額を支出に数えます。残高で払ったときも「使った」で記録すると用途の内訳に入ります（合計には二重に入りません）。</span>
         </div>
         <div class="full field" id="xCatWrap"><span id="xCatLabel">用途</span><div class="cats" id="xCats" role="group" aria-labelledby="xCatLabel"></div></div>
         <label class="field">なにに？<input type="text" id="xItem" placeholder="お店・品目" autocomplete="off"></label>
@@ -320,7 +321,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
         <button type="button" data-f="charge" aria-pressed="false">チャージ</button>
       </div>
       <div id="xList"></div>
-      <p class="note">記録をタップすると修正・削除できます。</p>
+      <p class="note">合計はカード・現金で使った分とチャージ額です。電子マネー・QR決済で払った分（灰色）は残高からなので合計に入りません。記録をタップすると修正・削除できます。</p>
     </section>
   </section>
 
@@ -442,11 +443,17 @@ const TITLES = { home: 'おさいふ帳', expense: '支出', income: '収入', s
 // closeDay / payDay: 1-31, 0 = 月末
 // fixed: [{ id, name, amount, category, pay, day, lastMonth }] — recorded automatically each month on `day`
 const DEFAULT_SETTINGS = { cardLimit: 0, budgets: {}, closeDay: 0, payMonths: 1, payDay: 27, fixed: [] };
-// entry kinds: expense / income / charge (card or cash → e-money or QR balance, not spending) / stash (dir: in | out)
+// entry kinds: expense / income / charge (card or cash → e-money or QR balance) / stash (dir: in | out)
+// Counting rules:
+//  - 支出の合計 = card + cash expenses + every charge. E-money / QR payments come out of a balance already counted
+//    at charge time, so they appear only in the category breakdown.
+//  - 自由に使えるお金 only loses what leaves as cash (cash expenses, cash charges); card bills are paid separately.
 const isExp = e => e.kind === 'expense';
 const isCharge = e => e.kind === 'charge';
 const isStash = e => e.kind === 'stash';
 const payOf = e => PAYS[e.pay] ? e.pay : 'cash';
+const fromBalance = e => isExp(e) && (payOf(e) === 'emoney' || payOf(e) === 'qr');
+const countsInTotal = e => isCharge(e) || (isExp(e) && !fromBalance(e));
 
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
@@ -546,12 +553,13 @@ function monthStats(m) {
   const income = sum(e => e.kind === 'income');
   const by = {};
   Object.keys(PAYS).forEach(k => { by[k] = sum(e => isExp(e) && payOf(e) === k); });
-  const spent = Object.values(by).reduce((a, v) => a + v, 0);
-  const chargeCard = sum(e => isCharge(e) && e.pay === 'card');
+  const chargeCard = sum(e => isCharge(e) && payOf(e) === 'card');
+  const chargeCash = sum(e => isCharge(e) && payOf(e) === 'cash');
+  const cardUse = by.card + chargeCard, cashOut = by.cash + chargeCash;
   const stashIn = sum(e => isStash(e) && e.dir !== 'out');
   const stashOut = sum(e => isStash(e) && e.dir === 'out');
-  return { list, income, ...by, spent, chargeCard, cardUse: by.card + chargeCard, stashIn, stashOut,
-    free: income - spent - stashIn + stashOut };
+  return { list, income, ...by, chargeCard, chargeCash, cardUse, cashOut, spent: cardUse + cashOut, stashIn, stashOut,
+    free: income - cashOut - stashIn + stashOut };
 }
 const stashBalance = () => state.entries.filter(isStash).reduce((a, e) => a + (e.dir === 'out' ? -e.amount : e.amount), 0);
 const level = r => r > 1 ? 'bad' : r >= 0.8 ? 'warn' : 'good';
@@ -611,14 +619,14 @@ function render() {
 
 function renderHome(s) {
   const today = todayStr(), isNow = view === today.slice(0, 7);
-  const parts = [`入った ${yen(s.income)}`, `使った ${yen(s.spent)}`];
+  const parts = [`入った ${yen(s.income)}`, `現金で使った ${yen(s.cashOut)}`];
   const net = s.stashIn - s.stashOut;
   if (net) parts.push(`へそくり ${net > 0 ? '−' : '+'}${yen(Math.abs(net))}`);
   let daily = '';
   if (isNow) {
     const now = new Date(today + 'T00:00:00');
     const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
-    const pendingFixed = (state.settings.fixed || []).filter(f => (f.lastMonth || '') < view).reduce((a, f) => a + f.amount, 0);
+    const pendingFixed = (state.settings.fixed || []).filter(f => f.pay === 'cash' && (f.lastMonth || '') < view).reduce((a, f) => a + f.amount, 0);
     const usable = s.free - pendingFixed;
     if (!s.income) daily = `<div class="daily"><span>収入タブで今月の「入ったお金」を記録すると、1日に使える額が出ます。</span></div>`;
     else if (usable <= 0) daily = `<div class="daily"><span>月末まであと${daysLeft}日</span><b>今月はもう使えません</b></div>`;
@@ -626,14 +634,21 @@ function renderHome(s) {
   }
   $('hero').className = 'hero' + (s.free < 0 ? ' minus' : '');
   $('hero').innerHTML = `<span class="k">自由に使えるお金（この月の残り）</span>
-    <span class="big num">${yen(s.free)}</span><span class="s num">${parts.join('　')}</span>${daily}`;
+    <span class="big num">${yen(s.free)}</span><span class="s num">${parts.join('　')}</span>
+    <span class="s">カード払い（${yen(s.cardUse)}）は引き落としなので、ここからは引きません</span>${daily}`;
   $('tIn').textContent = yen(s.income);
   $('tOut').textContent = yen(s.spent);
+  $('paySum').textContent = yen(s.spent);
   $('tStash').textContent = yen(stashBalance());
 
-  const keys = Object.keys(PAYS);
-  $('payBar').innerHTML = s.spent ? keys.map(k => s[k] ? `<i class="${k}" style="width:${s[k] / s.spent * 100}%" data-tip="${PAYS[k]} ${yen(s[k])}"></i>` : '').join('') : '';
-  $('payList').innerHTML = keys.map(k => `<div><span><i class="dot ${k}"></i>${PAYS[k]}</span><b class="num">${yen(s[k])}</b></div>`).join('');
+  const out = { card: s.cardUse, cash: s.cashOut };
+  $('payBar').innerHTML = s.spent ? ['card', 'cash'].map(k => out[k] ? `<i class="${k}" style="width:${out[k] / s.spent * 100}%" data-tip="${PAYS[k]} ${yen(out[k])}"></i>` : '').join('') : '';
+  $('payList').innerHTML = `<div><span><i class="dot card"></i>カード</span><b class="num">${yen(s.cardUse)}</b></div>
+    <div><span><i class="dot cash"></i>現金</span><b class="num">${yen(s.cashOut)}</b></div>
+    <div><span><i class="dot emoney"></i>電子マネー</span><b class="num">${yen(s.emoney)}</b></div>
+    <div><span><i class="dot qr"></i>QR決済</span><b class="num">${yen(s.qr)}</b></div>`;
+  $('payNote').textContent = (s.chargeCard || s.chargeCash ? `カード・現金にはチャージ ${yen(s.chargeCard + s.chargeCash)} を含みます。` : '')
+    + '電子マネー・QR決済はチャージした残高から払った分で、合計には入りません。';
 
   renderCard(s);
   renderBars(s);
@@ -679,6 +694,7 @@ function renderBars(s) {
   const rows = Object.keys(by).map(c => ({ c, ...by[c], total: Object.values(by[c]).reduce((a, v) => a + v, 0) })).sort((a, b) => b.total - a.total);
   if (!rows.length) { $('bars').innerHTML = '<p class="empty">支出を記録すると、何にいくら使ったかがここに並びます。</p>'; return; }
   const max = Math.max(...rows.map(r => Math.max(r.total, budgets[r.c] || 0)));
+  const catSum = rows.reduce((a, r) => a + r.total, 0);
   const [vy, vm] = view.split('-').map(Number), prevKey = monthKey(vy, vm - 2);
   const prevBy = {};
   state.entries.filter(e => isExp(e) && e.date.startsWith(prevKey)).forEach(e => { prevBy[e.category] = (prevBy[e.category] || 0) + e.amount; });
@@ -686,7 +702,7 @@ function renderBars(s) {
   $('bars').innerHTML = rows.map(r => {
     const b = budgets[r.c] || 0;
     const seg = k => r[k] ? `<i class="${k}" style="width:${r[k] / max * 100}%" data-tip="${esc(r.c)}・${PAYS[k]} ${yen(r[k])}"></i>` : '';
-    const note = b ? (r.total > b ? `<span class="over">予算を ${yen(r.total - b)} 超過</span>` : `予算の ${Math.round(r.total / b * 100)}%`) : `支出の ${Math.round(r.total / s.spent * 100)}%`;
+    const note = b ? (r.total > b ? `<span class="over">予算を ${yen(r.total - b)} 超過</span>` : `予算の ${Math.round(r.total / b * 100)}%`) : `全体の ${Math.round(r.total / catSum * 100)}%`;
     const d = r.total - (prevBy[r.c] || 0);
     const delta = hasPrev ? `<span class="delta num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d ? `先月${d > 0 ? '+' : '−'}${yen(Math.abs(d))}` : '先月と同じ'}</span>` : '';
     return `<div class="bar-row"><div class="name">${esc(r.c)}</div><div class="bar-body">
@@ -737,10 +753,10 @@ function renderExpense(s) {
     const charge = isCharge(e), p = payOf(e);
     const b = p === 'card' ? billOf(e.date) : null;
     const due = b ? `・<span class="due">${b.payOn.getMonth() + 1}/${b.payOn.getDate()}引き落とし</span>` : '';
-    const sub = (charge ? `${PAYS[p]} → ${PAYS[e.to] || '電子マネー'}` : esc(e.category)) + due;
+    const sub = (charge ? `${PAYS[p]} → ${PAYS[e.to] || '電子マネー'}` : esc(e.category) + (fromBalance(e) ? '・残高から' : '')) + due;
     const tagTxt = charge ? 'チャージ' : { card: 'カード', cash: '現金', emoney: '電子', qr: 'QR' }[p];
-    return rowHtml(e, 'x', charge ? 'charge' : p, tagTxt, esc(e.item || e.category) + (e.fixedId ? '<span class="tag fixed">固定費</span>' : ''), sub, yen(e.amount), charge ? 'muted' : '');
-  }, items => { const t = items.filter(isExp).reduce((a, e) => a + e.amount, 0); return t ? yen(t) : ''; })
+    return rowHtml(e, 'x', charge ? 'charge' : p, tagTxt, esc(e.item || e.category) + (e.fixedId ? '<span class="tag fixed">固定費</span>' : ''), sub, yen(e.amount), fromBalance(e) ? 'muted' : '');
+  }, items => { const t = items.filter(countsInTotal).reduce((a, e) => a + e.amount, 0); return t ? yen(t) : ''; })
     : `<p class="empty">${s.list.some(e => isExp(e) || isCharge(e)) ? 'この条件の記録はありません。' : 'この月の支出はまだありません。上から記録できます。'}</p>`;
 }
 
